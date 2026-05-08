@@ -1,0 +1,1843 @@
+openapi: 3.0.3
+
+info:
+  title: Beehive Monitoring API
+  version: 1.0.0
+  description: |
+    API for monitoring beehives and ingesting telemetry data.
+
+    Authentication & security:
+
+    Internal API (/api/*)
+    - Session-based authentication via HttpOnly cookie:
+      - Cookie: sessionId
+    - CSRF protection for authenticated state-changing routes:
+      - Header: X-CSRF-Token: <token>
+      - Token returned by:
+        - POST /api/auth/register
+        - POST /api/auth/login
+        - GET /api/auth/csrf
+
+    External ingest API (/ingest/*)
+    - Device telemetry ingest endpoint.
+    - Accepted auth methods:
+      - Header: X-Ingest-Token: <token>
+      - Header: Authorization: Bearer <token>
+    - Token validation is enforced by ingest middleware.
+
+servers:
+  - url: http://localhost:4000
+    description: Local development
+
+security:
+  - sessionCookie: []
+
+tags:
+  - name: Health
+    description: Service status (liveness/readiness)
+  - name: Auth
+    description: Authentication and account management
+  - name: Sessions
+    description: Session inspection and invalidation
+  - name: Alerts
+    description: View and resolve beekeeper alerts generated from hive readings
+  - name: External Conditions
+    description: Read and refresh weather conditions associated with a hive location
+  - name: Locations
+    description: Manage shared location records
+  - name: Hives
+    description: Manage hives (owned by authenticated beekeeper)
+  - name: Devices
+    description: Manage devices (owned through hive → beekeeper)
+  - name: Readings
+    description: Read-only telemetry query endpoints
+  - name: Ingest
+    description: Device telemetry ingestion endpoints
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: sessionId
+    csrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+    ingestTokenHeader:
+      type: apiKey
+      in: header
+      name: X-Ingest-Token
+    ingestBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: token
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+
+    HiveIdPath:
+      name: hiveId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+
+    LocationIdPath:
+      name: locationId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+
+    HiveIdQueryRequired:
+      name: hiveId
+      in: query
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+
+    SinceQueryRequired:
+      name: since
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date-time
+
+    UntilQuery:
+      name: until
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+
+    LimitQuery:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 10000
+
+    OrderQuery:
+      name: order
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: desc
+
+  responses:
+    BadRequestError:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            badRequest:
+              value:
+                error: Invalid input
+
+    UnauthorizedError:
+      description: Not authenticated (missing/invalid session cookie)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            unauthorized:
+              value:
+                error: Authentication required
+
+    ForbiddenError:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            forbidden:
+              value:
+                error: Forbidden
+
+    NotFoundError:
+      description: Not found (or not owned by the authenticated user)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            notFound:
+              value:
+                error: Not found
+
+    ConflictError:
+      description: Conflict (duplicate or violates constraint)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            conflict:
+              value:
+                error: Conflict
+
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    Success:
+      type: object
+      additionalProperties: false
+      required: [success]
+      properties:
+        success:
+          type: boolean
+
+    HealthLiveness:
+      type: object
+      additionalProperties: false
+      required: [status, timestamp, uptime_s]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        timestamp:
+          type: string
+          format: date-time
+        uptime_s:
+          type: integer
+          minimum: 0
+
+    HealthReadinessOk:
+      type: object
+      additionalProperties: false
+      required: [status, db, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        db:
+          type: string
+          enum: [ok]
+        timestamp:
+          type: string
+          format: date-time
+
+    HealthReadinessDegraded:
+      type: object
+      additionalProperties: false
+      required: [status, db, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [degraded]
+        db:
+          type: string
+          enum: [down]
+        timestamp:
+          type: string
+          format: date-time
+
+    User:
+      type: object
+      additionalProperties: false
+      description: Public authenticated user shape returned by auth and session endpoints.
+      required: [id, username, email]
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+          maxLength: 50
+        email:
+          type: string
+          maxLength: 254
+
+    Session:
+      type: object
+      additionalProperties: false
+      required: [expiresAt]
+      properties:
+        expiresAt:
+          type: string
+          format: date-time
+
+    AuthResponse:
+      type: object
+      additionalProperties: false
+      required: [user, csrfToken]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        csrfToken:
+          type: string
+
+    MeResponse:
+      type: object
+      additionalProperties: false
+      required: [user]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+
+    CsrfResponse:
+      type: object
+      additionalProperties: false
+      required: [csrfToken]
+      properties:
+        csrfToken:
+          type: string
+
+    CurrentSessionResponse:
+      type: object
+      additionalProperties: false
+      required: [user, session]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        session:
+          $ref: "#/components/schemas/Session"
+
+    AlertSettingsFields:
+      type: object
+      additionalProperties: false
+      description: |
+        Alert settings patch fields.
+
+        Behavior enforced by the API:
+        - At least one field must be provided.
+        - If any threshold field is provided, all four threshold fields must be provided together.
+        - Threshold fields must be either all numbers or all null.
+        - Numeric thresholds must satisfy critical_low_threshold < warning_low_threshold < warning_high_threshold < critical_high_threshold.
+      properties:
+        alerts_enabled:
+          type: boolean
+        warning_low_threshold:
+          type: number
+          nullable: true
+        warning_high_threshold:
+          type: number
+          nullable: true
+        critical_low_threshold:
+          type: number
+          nullable: true
+        critical_high_threshold:
+          type: number
+          nullable: true
+
+    AlertSettingsNestedFields:
+      type: object
+      additionalProperties: false
+      required: [alert_settings]
+      properties:
+        alert_settings:
+          $ref: "#/components/schemas/AlertSettingsFields"
+
+    AlertSettings:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          alerts_enabled,
+          warning_low_threshold,
+          warning_high_threshold,
+          critical_low_threshold,
+          critical_high_threshold,
+          updated_at,
+        ]
+      properties:
+        alerts_enabled:
+          type: boolean
+        warning_low_threshold:
+          type: number
+          nullable: true
+        warning_high_threshold:
+          type: number
+          nullable: true
+        critical_low_threshold:
+          type: number
+          nullable: true
+        critical_high_threshold:
+          type: number
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+
+    AlertSettingsResponse:
+      type: object
+      additionalProperties: false
+      required: [alert_settings]
+      properties:
+        alert_settings:
+          $ref: "#/components/schemas/AlertSettings"
+
+    Hive:
+      type: object
+      additionalProperties: false
+      required:
+        [id, beekeeper_id, name, notes, location_id, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        beekeeper_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          maxLength: 100
+        notes:
+          type: string
+          nullable: true
+        location_id:
+          type: integer
+          format: int64
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    HiveListResponse:
+      type: object
+      additionalProperties: false
+      required: [hives]
+      properties:
+        hives:
+          type: array
+          items:
+            $ref: "#/components/schemas/Hive"
+
+    HiveResponse:
+      type: object
+      additionalProperties: false
+      required: [hive]
+      properties:
+        hive:
+          $ref: "#/components/schemas/Hive"
+
+    Device:
+      type: object
+      additionalProperties: false
+      required: [id, hive_id, installed_at, last_seen_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        hive_id:
+          type: integer
+          format: int64
+        installed_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    DeviceListResponse:
+      type: object
+      additionalProperties: false
+      required: [devices]
+      properties:
+        devices:
+          type: array
+          items:
+            $ref: "#/components/schemas/Device"
+
+    DeviceResponse:
+      type: object
+      additionalProperties: false
+      required: [device]
+      properties:
+        device:
+          $ref: "#/components/schemas/Device"
+
+    Location:
+      type: object
+      additionalProperties: false
+      required: [id, name, lat, lon, lat_e6, lon_e6, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          nullable: true
+          maxLength: 120
+        lat:
+          type: number
+        lon:
+          type: number
+        lat_e6:
+          type: integer
+        lon_e6:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    LocationListResponse:
+      type: object
+      additionalProperties: false
+      required: [locations]
+      properties:
+        locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Location"
+
+    LocationResponse:
+      type: object
+      additionalProperties: false
+      required: [location]
+      properties:
+        location:
+          $ref: "#/components/schemas/Location"
+
+    ExternalCondition:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          location_id,
+          bucket_at,
+          fetched_at,
+          provider,
+          status,
+          error_message,
+          temperature,
+          humidity_pct,
+          precip_mm,
+          wind_mps,
+          wind_gust_mps,
+          pressure_hpa,
+          cloud_pct,
+          raw_json,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id:
+          type: integer
+          format: int64
+        location_id:
+          type: integer
+          format: int64
+        bucket_at:
+          type: string
+          format: date-time
+        fetched_at:
+          type: string
+          format: date-time
+          nullable: true
+        provider:
+          type: string
+          maxLength: 40
+        status:
+          type: string
+          enum: [pending, success, failed]
+        error_message:
+          type: string
+          nullable: true
+        temperature:
+          type: number
+          nullable: true
+        humidity_pct:
+          type: number
+          nullable: true
+        precip_mm:
+          type: number
+          nullable: true
+        wind_mps:
+          type: number
+          nullable: true
+        wind_gust_mps:
+          type: number
+          nullable: true
+        pressure_hpa:
+          type: number
+          nullable: true
+        cloud_pct:
+          type: number
+          nullable: true
+        raw_json:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ExternalConditionResponse:
+      type: object
+      additionalProperties: false
+      required: [externalCondition]
+      properties:
+        externalCondition:
+          $ref: "#/components/schemas/ExternalCondition"
+
+    ExternalConditionListResponse:
+      type: object
+      additionalProperties: false
+      required: [externalConditions]
+      properties:
+        externalConditions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalCondition"
+
+    Alert:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          reading_id,
+          beekeeper_id,
+          hive_id,
+          device_id,
+          severity,
+          direction,
+          threshold_value,
+          temperature,
+          email_sent,
+          email_sent_at,
+          email_error_message,
+          resolved,
+          resolved_at,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id:
+          type: integer
+          format: int64
+        reading_id:
+          type: integer
+          format: int64
+        beekeeper_id:
+          type: integer
+          format: int64
+        hive_id:
+          type: integer
+          format: int64
+        device_id:
+          type: integer
+          format: int64
+        severity:
+          type: string
+          enum: [warning, critical]
+        direction:
+          type: string
+          enum: [low, high]
+        threshold_value:
+          type: number
+        temperature:
+          type: number
+        email_sent:
+          type: boolean
+        email_sent_at:
+          type: string
+          format: date-time
+          nullable: true
+        email_error_message:
+          type: string
+          nullable: true
+        resolved:
+          type: boolean
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AlertResponse:
+      type: object
+      additionalProperties: false
+      required: [success, alert]
+      properties:
+        success:
+          type: boolean
+        alert:
+          $ref: "#/components/schemas/Alert"
+
+    AlertListResponse:
+      type: object
+      additionalProperties: false
+      required: [success, alerts]
+      properties:
+        success:
+          type: boolean
+        alerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Alert"
+
+    Reading:
+      type: object
+      additionalProperties: false
+      required:
+        [id, device_id, bucket_at, received_at, temperature, rssi, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        device_id:
+          type: integer
+          format: int64
+        bucket_at:
+          type: string
+          format: date-time
+        received_at:
+          type: string
+          format: date-time
+        temperature:
+          type: number
+        rssi:
+          type: number
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    LatestHiveReading:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          hive_id,
+          id,
+          device_id,
+          bucket_at,
+          received_at,
+          temperature,
+          rssi,
+          created_at,
+        ]
+      properties:
+        hive_id:
+          type: integer
+          format: int64
+        id:
+          type: integer
+          format: int64
+          nullable: true
+        device_id:
+          type: integer
+          format: int64
+          nullable: true
+        bucket_at:
+          type: string
+          format: date-time
+          nullable: true
+        received_at:
+          type: string
+          format: date-time
+          nullable: true
+        temperature:
+          type: number
+          nullable: true
+        rssi:
+          type: number
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ReadingListResponse:
+      type: object
+      additionalProperties: false
+      required: [readings]
+      properties:
+        readings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Reading"
+
+    LatestReadingResponse:
+      type: object
+      additionalProperties: false
+      required: [reading]
+      properties:
+        reading:
+          $ref: "#/components/schemas/LatestHiveReading"
+
+    IngestReadingResponse:
+      type: object
+      additionalProperties: false
+      required: [success, inserted, reading]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        inserted:
+          type: boolean
+          enum: [true]
+        reading:
+          $ref: "#/components/schemas/Reading"
+
+    IngestReadingConflictResponse:
+      type: object
+      additionalProperties: false
+      required: [success, inserted, error]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        inserted:
+          type: boolean
+          enum: [false]
+        error:
+          type: string
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: Process is up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthLiveness"
+
+  /health/ready:
+    get:
+      tags: [Health]
+      summary: Readiness probe
+      security: []
+      responses:
+        "200":
+          description: DB reachable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthReadinessOk"
+        "503":
+          description: DB not reachable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthReadinessDegraded"
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register user and start session
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, username, password]
+              properties:
+                email:
+                  type: string
+                  maxLength: 254
+                username:
+                  type: string
+                  maxLength: 50
+                password:
+                  type: string
+      responses:
+        "201":
+          description: User created and session started
+          headers:
+            Set-Cookie:
+              description: HttpOnly session cookie
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in and start session
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [identifier, password]
+              properties:
+                identifier:
+                  type: string
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Session started
+          headers:
+            Set-Cookie:
+              description: HttpOnly session cookie
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /api/auth/reset-password/request:
+    post:
+      tags: [Auth]
+      summary: Request password reset
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  maxLength: 254
+      responses:
+        "200":
+          description: Always returns success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Success"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+
+  /api/auth/reset-password/confirm:
+    post:
+      tags: [Auth]
+      summary: Confirm password reset
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token, newPassword]
+              properties:
+                token:
+                  type: string
+                newPassword:
+                  type: string
+      responses:
+        "200":
+          description: Password reset successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Success"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Log out current session
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "200":
+          description: Logged out
+          headers:
+            Set-Cookie:
+              description: Clears the HttpOnly session cookie
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Success"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /api/auth/change-password:
+    patch:
+      tags: [Auth]
+      summary: Change password
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                newPassword:
+                  type: string
+      responses:
+        "200":
+          description: Password updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Success"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/auth/alert-settings:
+    patch:
+      tags: [Auth]
+      summary: Update authenticated user alert settings
+      description: Accepts flat snake_case fields or nested `alert_settings` / `alertSettings` payloads.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              anyOf:
+                - $ref: "#/components/schemas/AlertSettingsFields"
+                - $ref: "#/components/schemas/AlertSettingsNestedFields"
+      responses:
+        "200":
+          description: Alert settings updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertSettingsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+    delete:
+      tags: [Auth]
+      summary: Delete current user and all sessions
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "204":
+          description: User deleted
+          headers:
+            Set-Cookie:
+              description: Clears the HttpOnly session cookie
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/auth/csrf:
+    get:
+      tags: [Auth]
+      summary: Get CSRF token
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: CSRF token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CsrfResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /api/sessions/current:
+    get:
+      tags: [Sessions]
+      summary: Get current session context
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Session context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentSessionResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+    delete:
+      tags: [Sessions]
+      summary: Invalidate current session
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "200":
+          description: Session destroyed
+          headers:
+            Set-Cookie:
+              description: Clears the HttpOnly session cookie
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Success"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /api/sessions:
+    delete:
+      tags: [Sessions]
+      summary: Invalidate all sessions
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "200":
+          description: All sessions destroyed
+          headers:
+            Set-Cookie:
+              description: Clears the HttpOnly session cookie
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Success"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /api/hives:
+    post:
+      tags: [Hives]
+      summary: Create hive
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  maxLength: 100
+                notes:
+                  type: string
+                  nullable: true
+                locationId:
+                  type: integer
+                  format: int64
+                  nullable: true
+      responses:
+        "201":
+          description: Hive created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HiveResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    get:
+      tags: [Hives]
+      summary: List hives
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Hive list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HiveListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /api/hives/{id}:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    get:
+      tags: [Hives]
+      summary: Get hive by id
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Hive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HiveResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    patch:
+      tags: [Hives]
+      summary: Update hive
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  maxLength: 100
+                notes:
+                  type: string
+                  nullable: true
+                locationId:
+                  type: integer
+                  format: int64
+                  nullable: true
+      responses:
+        "200":
+          description: Hive updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HiveResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    delete:
+      tags: [Hives]
+      summary: Delete hive
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "204":
+          description: Hive deleted
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/hives/{hiveId}/devices:
+    parameters:
+      - $ref: "#/components/parameters/HiveIdPath"
+    post:
+      tags: [Devices]
+      summary: Create device under hive
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                installedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+      responses:
+        "201":
+          description: Device created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+    get:
+      tags: [Devices]
+      summary: List devices under hive
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Devices for hive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/devices:
+    get:
+      tags: [Devices]
+      summary: List all devices
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Device list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /api/devices/{id}:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    get:
+      tags: [Devices]
+      summary: Get device by id
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    delete:
+      tags: [Devices]
+      summary: Delete device
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "204":
+          description: Device deleted
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/devices/{id}/last-seen:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    post:
+      tags: [Devices]
+      summary: Update device last-seen
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                seenAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+      responses:
+        "200":
+          description: Device updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/locations:
+    get:
+      tags: [Locations]
+      summary: List locations
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/LimitQuery"
+        - $ref: "#/components/parameters/OrderQuery"
+      responses:
+        "200":
+          description: Location list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+    post:
+      tags: [Locations]
+      summary: Create or return an existing location by coordinates
+      description: If a location already exists for the given rounded coordinates, the existing record is returned.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [lat, lon]
+              properties:
+                name:
+                  type: string
+                  nullable: true
+                  maxLength: 120
+                lat:
+                  type: number
+                lon:
+                  type: number
+      responses:
+        "201":
+          description: Location created or existing location returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /api/locations/{locationId}:
+    parameters:
+      - $ref: "#/components/parameters/LocationIdPath"
+    get:
+      tags: [Locations]
+      summary: Get location by id
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    patch:
+      tags: [Locations]
+      summary: Update location
+      description: Name may be set to null. Latitude and longitude must be provided together when updating coordinates.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  nullable: true
+                  maxLength: 120
+                lat:
+                  type: number
+                lon:
+                  type: number
+      responses:
+        "200":
+          description: Location updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    delete:
+      tags: [Locations]
+      summary: Delete location
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Location deleted
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/external-conditions/latest:
+    get:
+      tags: [External Conditions]
+      summary: Get latest external conditions for a hive
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/HiveIdQueryRequired"
+      responses:
+        "200":
+          description: Latest external condition for the hive's location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalConditionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          description: Hive not found, hive has no location, or no external conditions exist for that hive yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/external-conditions/since:
+    get:
+      tags: [External Conditions]
+      summary: Get external conditions for a hive over a time range
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/HiveIdQueryRequired"
+        - $ref: "#/components/parameters/SinceQueryRequired"
+        - $ref: "#/components/parameters/UntilQuery"
+        - $ref: "#/components/parameters/LimitQuery"
+        - $ref: "#/components/parameters/OrderQuery"
+      responses:
+        "200":
+          description: External conditions in the requested range
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalConditionListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          description: Hive not found or hive has no location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/external-conditions/fetch:
+    post:
+      tags: [External Conditions]
+      summary: Fetch and upsert current external conditions for a hive
+      description: Returns the current 10-minute bucket row. If a row for the current bucket already exists, the existing row is returned without calling the upstream provider again.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/HiveIdQueryRequired"
+      responses:
+        "200":
+          description: External conditions row for the current bucket
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalConditionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          description: Hive not found or hive has no location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/alerts:
+    get:
+      tags: [Alerts]
+      summary: List alerts for the authenticated beekeeper
+      description: Returns all alerts for the authenticated beekeeper, optionally filtered by `hiveId`.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: hiveId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        "200":
+          description: Alert list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /api/alerts/{alertId}/resolve:
+    parameters:
+      - name: alertId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    patch:
+      tags: [Alerts]
+      summary: Resolve a critical alert
+      description: Only alerts with severity `critical` can be resolved. If the alert is already resolved, the existing alert is returned.
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Alert resolved or already resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/readings/since:
+    get:
+      tags: [Readings]
+      summary: Return readings for a hive since a timestamp
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/HiveIdQueryRequired"
+        - $ref: "#/components/parameters/SinceQueryRequired"
+        - $ref: "#/components/parameters/UntilQuery"
+        - $ref: "#/components/parameters/LimitQuery"
+        - $ref: "#/components/parameters/OrderQuery"
+      responses:
+        "200":
+          description: Readings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadingListResponse"
+              examples:
+                example:
+                  value:
+                    readings:
+                      - id: 100
+                        device_id: 12
+                        bucket_at: "2026-02-28T18:00:00.000Z"
+                        received_at: "2026-02-28T18:00:01.000Z"
+                        temperature: 91.2
+                        rssi: -87
+                        created_at: "2026-02-28T18:00:01.000Z"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /api/readings/latest:
+    get:
+      tags: [Readings]
+      summary: Return the most recent reading for a hive
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/HiveIdQueryRequired"
+      responses:
+        "200":
+          description: Latest reading for the hive. If the hive exists but has no readings yet, the response still contains a `reading` object with `hive_id` set and the reading fields null.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LatestReadingResponse"
+              examples:
+                example:
+                  value:
+                    reading:
+                      hive_id: 7
+                      id: 101
+                      device_id: 12
+                      bucket_at: "2026-02-28T18:10:00.000Z"
+                      received_at: "2026-02-28T18:10:01.000Z"
+                      temperature: 91.4
+                      rssi: -86
+                      created_at: "2026-02-28T18:10:01.000Z"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /ingest/readings:
+    post:
+      tags: [Ingest]
+      summary: Accept telemetry payload from a device
+      security:
+        - ingestTokenHeader: []
+        - ingestBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [deviceId, temperature, rssi]
+              properties:
+                deviceId:
+                  type: integer
+                  format: int64
+                  minimum: 1
+                temperature:
+                  type: number
+                rssi:
+                  type: number
+      responses:
+        "201":
+          description: Reading accepted and inserted for the current 10-minute bucket
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestReadingResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "409":
+          description: A reading already exists for this device in the current 10-minute bucket
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestReadingConflictResponse"

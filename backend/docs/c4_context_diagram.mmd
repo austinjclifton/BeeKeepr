@@ -1,0 +1,28 @@
+flowchart LR
+  classDef person fill:#ffffff,stroke:#2e7d32,stroke-width:2px;
+  classDef system fill:#e8f1ff,stroke:#1565c0,stroke-width:2px;
+  classDef external fill:#fff7e6,stroke:#ef6c00,stroke-width:2px;
+
+  BEEKEEPER["Beekeeper
+[Person]
+
+A beekeeper who monitors hive health and manages hives."]:::person
+
+  SYSTEM["Asheville Backend System
+[Software System]
+
+Allows beekeepers to monitor hive conditions and manage monitoring devices."]:::system
+
+  DEVICE["Telemetry Device
+[Software System]
+
+A physical hive monitoring device that sends sensor readings to our server."]:::external
+
+  NOTIFY["Notification Service
+[Software System]
+
+Sends email alerts to beekeepers (SMS planned)."]:::external
+
+  BEEKEEPER -->|Views hive data and manages hives using| SYSTEM
+  DEVICE -->|Sends sensor readings to| SYSTEM
+  SYSTEM -->|Sends alert emails via| NOTIFY

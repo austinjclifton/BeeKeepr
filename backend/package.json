@@ -1,0 +1,25 @@
+{
+  "name": "asheville-backend",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mysql": "^2.18.1",
+    "mysql2": "^3.16.2",
+    "pg": "^8.20.0",
+    "swagger-ui-express": "^5.0.1",
+    "yaml": "^2.8.2"
+  },
+  "devDependencies": {
+    "supertest": "^7.1.1"
+  }
+}

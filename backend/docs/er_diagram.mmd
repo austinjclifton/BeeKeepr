@@ -1,0 +1,128 @@
+---
+config:
+  layout: elk
+---
+erDiagram
+
+  BEEKEEPER {
+    BIGINT id PK
+    VARCHAR(50) username UK
+    VARCHAR(255) password_hash
+    VARCHAR(254) email UK
+    VARCHAR(32) phone
+    BOOLEAN alerts_enabled
+    DOUBLE_PRECISION warning_low_threshold
+    DOUBLE_PRECISION warning_high_threshold
+    DOUBLE_PRECISION critical_low_threshold
+    DOUBLE_PRECISION critical_high_threshold
+    TIMESTAMPTZ created_at
+    TIMESTAMPTZ updated_at
+  }
+  ALERT {
+    BIGINT id PK
+    BIGINT reading_id UK, FK
+    BIGINT beekeeper_id FK
+    BIGINT hive_id FK
+    BIGINT device_id FK
+    VARCHAR(16) severity
+    VARCHAR(16) direction
+    DOUBLE_PRECISION threshold_value
+    DOUBLE_PRECISION temperature
+    BOOLEAN email_sent
+    TIMESTAMPTZ email_sent_at
+    TEXT email_error_message
+    BOOLEAN resolved
+    TIMESTAMPTZ resolved_at
+    TIMESTAMPTZ created_at
+    TIMESTAMPTZ updated_at
+  }
+
+  LOCATION {
+    BIGINT id PK
+    VARCHAR(120) name
+    DOUBLE_PRECISION lat
+    DOUBLE_PRECISION lon
+    INTEGER lat_e6 UK
+    INTEGER lon_e6 UK
+    TIMESTAMPTZ created_at
+    TIMESTAMPTZ updated_at
+  }
+
+  HIVE {
+    BIGINT id PK
+    BIGINT beekeeper_id FK
+    BIGINT location_id FK
+    VARCHAR(100) name
+    TEXT notes
+    TIMESTAMPTZ created_at
+    TIMESTAMPTZ updated_at
+  }
+
+  DEVICE {
+    BIGINT id PK
+    BIGINT hive_id FK
+    TIMESTAMPTZ installed_at
+    TIMESTAMPTZ last_seen_at
+    TIMESTAMPTZ created_at
+    TIMESTAMPTZ updated_at
+  }
+
+  READING {
+    BIGINT id PK
+    BIGINT device_id FK
+    TIMESTAMPTZ bucket_at UK
+    TIMESTAMPTZ received_at
+    DOUBLE_PRECISION temperature
+    SMALLINT rssi
+    TIMESTAMPTZ created_at
+  }
+
+  EXTERNAL_CONDITION {
+    BIGINT id PK
+    BIGINT location_id FK
+    TIMESTAMPTZ bucket_at UK
+    TIMESTAMPTZ fetched_at
+    VARCHAR(40) provider
+    VARCHAR(16) status
+    TEXT error_message
+    DOUBLE_PRECISION temperature
+    DOUBLE_PRECISION humidity_pct
+    DOUBLE_PRECISION precip_mm
+    DOUBLE_PRECISION wind_mps
+    DOUBLE_PRECISION wind_gust_mps
+    DOUBLE_PRECISION pressure_hpa
+    DOUBLE_PRECISION cloud_pct
+    JSONB raw_json
+    TIMESTAMPTZ created_at
+    TIMESTAMPTZ updated_at
+  }
+
+  SESSION {
+    BIGINT id PK
+    BIGINT beekeeper_id FK
+    TEXT session_token UK
+    TEXT csrf_token UK
+    BOOLEAN active
+    TIMESTAMPTZ created_at
+    TIMESTAMPTZ expires_at
+    TIMESTAMPTZ last_activity_at
+  }
+
+  PASSWORD_RESET_TOKEN {
+    BIGINT beekeeper_id PK, FK
+    TEXT token_hash
+    TIMESTAMPTZ expires_at
+    TIMESTAMPTZ created_at
+    TIMESTAMPTZ consumed_at
+  }
+
+  BEEKEEPER ||--o{ HIVE : owns
+  LOCATION  ||--o{ HIVE : located_at
+  HIVE      ||--|| DEVICE : has
+  DEVICE    ||--o{ READING : records
+  LOCATION  ||--o{ EXTERNAL_CONDITION : conditions
+  BEEKEEPER ||--o{ SESSION : sessions
+  BEEKEEPER ||--|| PASSWORD_RESET_TOKEN : reset_token
+
+  READING ||--|| ALERT : triggers
+  BEEKEEPER ||--o{ ALERT : receives

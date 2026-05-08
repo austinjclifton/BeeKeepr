@@ -1,0 +1,139 @@
+flowchart TB
+  classDef component fill:#eef2ff,stroke:#4338ca,stroke-width:1px;
+  classDef external fill:#fff7e6,stroke:#b45309,stroke-width:1px;
+  classDef datastore fill:#ecfeff,stroke:#0891b2,stroke-width:1px;
+
+  BEEKEEPER["Beekeeper
+[Person]"]:::external
+  DEVICE["Telemetry Device
+[External System]"]:::external
+
+  subgraph API["API Server
+[Container]"]
+    direction TB
+
+    subgraph HTTP["HTTP Boundary
+Routes and Middleware"]
+      direction TB
+      ROUTES["Route Modules
+Auth, Sessions, Hives, Devices, Readings, Ingest, Health"]:::component
+      AUTHMW["requireAuth
+Blocks unauthenticated requests"]:::component
+      CSRFM["requireCsrf
+Blocks state-changing requests without CSRF"]:::component
+      ERR["Error Handler
+Normalizes errors to HTTP responses"]:::component
+    end
+
+    subgraph CTRL["Controllers
+[Components]"]
+      direction LR
+      AUTHC["Auth Controller
+[Component]"]:::component
+      SESSIONC["Session Controller
+[Component]"]:::component
+      HIVEC["Hive Controller
+[Component]"]:::component
+      DEVICEC["Device Controller
+[Component]"]:::component
+      READINGC["Reading Controller
+[Component]"]:::component
+      INGESTC["Ingest Controller
+[Component]"]:::component
+    end
+
+    subgraph SVC["Services
+[Components]"]
+      direction LR
+      AUTHS["Auth Service
+[Component]"]:::component
+      SESSIONS["Sessions Service
+[Component]
+Create / validate / invalidate sessions
+Generates session + CSRF tokens"]:::component
+      PWRESETS["Password Reset Service
+[Component]"]:::component
+      HIVES["Hives Service
+[Component]"]:::component
+      DEVICES["Devices Service
+[Component]"]:::component
+      READS["Readings Service
+[Component]"]:::component
+      INGESTS["Ingest Service
+[Component]"]:::component
+    end
+
+    subgraph DATA["DB Modules
+[Components]"]
+      direction TB
+      POOL["pool
+[Component]"]:::component
+      USERSDB["users.db
+[Component]"]:::component
+      SESSIONSDB["sessions.db
+[Component]"]:::component
+      PWRESETDB["password_reset.db
+[Component]"]:::component
+      HIVESDB["hives.db
+[Component]"]:::component
+      DEVICESDB["devices.db
+[Component]"]:::component
+      READSDB["readings.db
+[Component]"]:::component
+    end
+  end
+
+  DB["PostgreSQL
+[Data Store]"]:::datastore
+
+  %% External interactions (high level)
+  BEEKEEPER -->|Uses| ROUTES
+  DEVICE -->|Posts readings to| ROUTES
+
+  %% HTTP boundary wiring (keep this tight for a clean boundary)
+  ROUTES --> AUTHMW
+  ROUTES --> CSRFM
+  ROUTES --> ERR
+
+  ROUTES --> AUTHC
+  ROUTES --> SESSIONC
+  ROUTES --> HIVEC
+  ROUTES --> DEVICEC
+  ROUTES --> READINGC
+  ROUTES --> INGESTC
+
+  %% Controller -> Service
+  AUTHC --> AUTHS
+  AUTHC --> PWRESETS
+  SESSIONC --> SESSIONS
+  HIVEC --> HIVES
+  DEVICEC --> DEVICES
+  READINGC --> READS
+  INGESTC --> INGESTS
+
+  %% Service -> DB
+  AUTHS --> USERSDB
+  SESSIONS --> SESSIONSDB
+  SESSIONS --> USERSDB
+  PWRESETS --> PWRESETDB
+  PWRESETS --> USERSDB
+  HIVES --> HIVESDB
+  DEVICES --> DEVICESDB
+  READS --> READSDB
+  INGESTS --> DEVICESDB
+  INGESTS --> READSDB
+
+  %% DB modules -> pool -> database
+  USERSDB --> POOL
+  SESSIONSDB --> POOL
+  PWRESETDB --> POOL
+  HIVESDB --> POOL
+  DEVICESDB --> POOL
+  READSDB --> POOL
+  POOL --> DB
+
+  style API stroke:#6b7280,stroke-width:1px,stroke-dasharray: 6 4,fill:#ffffff
+  style HTTP stroke:#6b7280,stroke-width:1px,stroke-dasharray: 6 4,fill:#ffffff
+  style CTRL stroke:#6b7280,stroke-width:1px,stroke-dasharray: 6 4,fill:#ffffff
+  style SVC stroke:#6b7280,stroke-width:1px,stroke-dasharray: 6 4,fill:#ffffff
+  style DATA stroke:#6b7280,stroke-width:1px,stroke-dasharray: 6 4,fill:#ffffff

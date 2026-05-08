@@ -1,0 +1,85 @@
+---
+config:
+  theme: base
+  look: classic
+  layout: dagre
+---
+flowchart TB
+
+  %% Optional actor (C4 usually shows who uses the system)
+  USER(["👤  Beekeeper"]):::person
+
+  subgraph CZ["Client Layer (Browser)"]
+    direction TB
+    WEB["Web Client (React + MUI)"]:::client
+    SESSION>"HttpOnly Session Cookie"]:::note
+    CSRF>"CSRF Token Required on state-changing requests"]:::note
+  end
+
+  subgraph API["API Server (Node.js + Express)"]
+    direction TB
+    ROUTES["Routes + Controllers HTTP boundary + request/response"]:::app
+    DOMAIN["Service Layer Domain rules + validation"]:::app
+    REPO["Repository Layer Parameterized SQL only"]:::app
+  end
+
+  subgraph SEC["Security Controls"]
+    direction TB
+    AUTH["Session Auth (requireAuth)"]:::app
+    CSRFM["CSRF Enforcement (requireCsrf)"]:::app
+    VALID["Input Validation (types + bounds)"]:::app
+  end
+
+  subgraph AZ["Application Layer (Server)"]
+    direction TB
+    API
+    SEC
+  end
+
+  subgraph DZ["Data Zone"]
+    direction TB
+    PG[("PostgreSQL Relational Database")]:::data
+    T1["beekeeper"]:::data
+    T2["hive"]:::data
+    T3["device"]:::data
+    T4["reading"]:::data
+    T5["session"]:::data
+  end
+
+  subgraph EXT["External Device"]
+    direction TB
+    DEV[["Telemetry Device Sends Temperature Readings"]]:::ext
+    TOKEN>"Ingest Token Required (header)"]:::note
+  end
+
+  USER -->|"Uses"| WEB
+
+  WEB --- SESSION
+  WEB --- CSRF
+
+  ROUTES --> DOMAIN
+  DOMAIN --> REPO
+
+  AUTH --> CSRFM
+  CSRFM --> VALID
+
+  SEC -. "middleware" .-> API
+
+  PG --- T1
+  PG --- T2
+  PG --- T3
+  PG --- T4
+  PG --- T5
+
+  DEV --- TOKEN
+
+  WEB -->|"HTTPS REST API (JSON) Cookie session + CSRF on mutations"| API
+  API -->|"Parameterized SQL Prepared statements + indexed queries"| PG
+  DEV -->|"POST /api/ingest/readings Header auth: Ingest Token"| API
+
+  classDef person fill:#ffffff,stroke:#111827,stroke-width:2px,color:#111827;
+  classDef client fill:#eff6ff,stroke:#93c5fd,stroke-width:2px,color:#0f172a;
+  classDef app fill:#ecfdf5,stroke:#86efac,stroke-width:2px,color:#0f172a;
+  classDef data fill:#fff7ed,stroke:#fdba74,stroke-width:2px,color:#0f172a;
+  classDef ext fill:#f5f3ff,stroke:#c4b5fd,stroke-width:2px,color:#0f172a;
+  classDef note fill:#f3f4f6,stroke:#d1d5db,stroke-width:1px,color:#111827;

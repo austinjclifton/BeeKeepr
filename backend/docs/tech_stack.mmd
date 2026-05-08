@@ -1,0 +1,9 @@
+flowchart TB
+  C["Client<br/>React + MUI"] 
+  A["API Server<br/>Node.js + Express"]
+  D["Database<br/>PostgreSQL (SQL)"]
+  H["Hardware Device<br/>Arduino Sensor"]
+
+  C <--> A
+  A <--> D
+  H --> A

@@ -1,0 +1,81 @@
+sequenceDiagram
+  autonumber
+  actor U as User (Browser / Postman)
+  participant C as Client (React / HTTP)
+  participant R as Express Router
+  participant AC as Auth Controller
+  participant AS as Auth Service
+  participant SS as Sessions Service
+  participant SC as Session Cookie Helper
+  participant SR as Sessions DB (Repo)
+  participant DB as PostgreSQL
+
+  Note over U,C: Login to obtain session cookie + CSRF tokn
+
+  U->>C: Submit identifier + password
+  C->>R: POST /api/auth/login: { identifier, password }
+  R->>AC: login(req,res)
+  AC->>AS: authService.login({ identifier, password })
+
+  AS->>AS: Validate credentials (lookup + password check)
+  alt Invalid credentials
+    AS-->>AC: throw 401
+    AC-->>C: 401 { error: "invalid credentials" }
+    C-->>U: Show error
+  else Valid credentials
+    AS->>SS: createSession({ userId, ip, userAgent })
+    SS->>SS: Generate sessionToken (opaque random)
+    SS->>SS: Generate csrfToken (random hex, 32 bytes)
+    SS->>SS: Compute expiresAt (now + 7 days)
+    SS->>SR: insert session(session_token, csrf_token, expires_at, ...)
+    SR->>DB: INSERT INTO "session" (...)
+    DB-->>SR: session row
+    SR-->>SS: session
+
+    SS-->>AS: { sessionToken, csrfToken, expiresAt }
+    AS-->>AC: { user, sessionToken, csrfToken, expiresAt }
+
+    Note over AC,SC: Set-Cookie: sessionId=sessionToken
+    AC->>SC: setSessionCookie(res, sessionToken)
+    SC-->>C: Set-Cookie sessionId=sessionToken<br/>HttpOnly&#59; Path=/&#59; SameSite=Lax&#59; Max-Age=604800<br/>Secure (only if NODE_ENV==="production")
+
+    AC-->>C: 200 { user, csrfToken }
+    Note over C: Client stores csrfToken (memory/storage). Cookie auto-sent by browser.
+
+    Note over U,C: State-changing requests must send cookie + csrf-token
+
+    U->>C: Perform state-changing action (example)
+    C->>R: POST /api/hives: { ... }
+
+    Note over R: Route middleware order: requireAuth -> requireCsrf
+    R->>R: requireAuth
+    alt Missing sessionId cookie
+      R-->>C: 401 { error: "Authentication required" }
+      C-->>U: Show auth required
+    else Cookie present
+      R->>SR: findActiveBySessionToken(sessionToken)
+      SR->>DB: SELECT ... FROM "session" WHERE session_token=$1 AND expires_at>now() AND revoked_at IS NULL
+      DB-->>SR: session row or none
+      SR-->>R: session
+
+      alt Invalid or expired session
+        R-->>C: 401 { error: "Invalid or expired session" }
+        C-->>U: Show session expired
+      else Session valid
+        R->>R: requireAuth populates req.user + req.session
+        R->>R: requireCsrf
+        alt No session on request (defensive)
+          R-->>C: 401 { error: "Authentication required" }
+          C-->>U: Show auth required
+        else Session present
+          alt Missing or invalid x-csrf-token
+            R-->>C: 403 { error: "Invalid CSRF token" }
+            C-->>U: Show CSRF error
+          else CSRF valid (x-csrf-token == req.session.csrfToken)
+            R-->>C: 2xx Success (controller runs)
+            C-->>U: Success
+          end
+        end
+      end
+    end
+  end
