@@ -52,6 +52,7 @@ function baseUsersRepo() {
   return {
     findByEmail: async () => null,
     findByUsername: async () => null,
+    findByLoginIdentifier: async () => null,
     create: async ({ username, email, passwordHash }) => ({
       id: 1,
       username,
@@ -79,7 +80,7 @@ function baseUsersRepo() {
 function baseSessions() {
   return {
     createSession: async () => ({ sessionToken: "s", csrfToken: "c" }),
-    invalidateAllSessionsForUser: async () => {},
+    invalidateAllSessionsForUser: async () => { },
   };
 }
 
@@ -172,7 +173,7 @@ test("register creates user and session", async () => {
 
 test("login returns unauthorized on bad credentials", async () => {
   const users = baseUsersRepo();
-  users.findByUsername = async () => ({
+  users.findByLoginIdentifier = async () => ({
     id: 3,
     username: "u",
     email: "u@e.com",
@@ -194,6 +195,50 @@ test("login returns unauthorized on bad credentials", async () => {
   );
 });
 
+test("login resolves email lookup through DB-level identifier query", async () => {
+  let lookup = null;
+  let sessionInput = null;
+
+  const users = baseUsersRepo();
+  users.findByLoginIdentifier = async (input) => {
+    lookup = input;
+    return {
+      id: 7,
+      username: "beek",
+      email: "beek@example.com",
+      password_hash: "hash:secretpass",
+    };
+  };
+
+  const sessions = baseSessions();
+  sessions.createSession = async (input) => {
+    sessionInput = input;
+    return { sessionToken: "sess", csrfToken: "csrf" };
+  };
+
+  const svc = buildService({
+    usersRepoStubs: users,
+    sessionsStubs: sessions,
+    bcryptStubs: baseBcrypt(),
+  });
+
+  const result = await svc.login({
+    identifier: "  Beek@Example.com ",
+    password: "secretpass",
+    context: { ip: "127.0.0.1" },
+  });
+
+  assert.deepEqual(lookup, {
+    identifier: "Beek@Example.com",
+    email: "beek@example.com",
+  });
+  assert.deepEqual(sessionInput, {
+    beekeeperId: 7,
+    context: { ip: "127.0.0.1" },
+  });
+  assert.equal(result.user.email, "beek@example.com");
+});
+
 test("changePassword rejects when new matches current", async () => {
   const svc = buildService({
     usersRepoStubs: baseUsersRepo(),
@@ -212,6 +257,79 @@ test("changePassword rejects when new matches current", async () => {
       err.status === 400 &&
       err.message === "New password must be different from current password",
   );
+});
+
+test("changePassword rejects bad current password", async () => {
+  const users = baseUsersRepo();
+  users.findById = async () => ({
+    id: 1,
+    username: "u",
+    email: "u@example.com",
+    password_hash: "hash:oldpass123",
+  });
+
+  const bcrypt = baseBcrypt();
+  bcrypt.compare = async () => false;
+
+  const svc = buildService({
+    usersRepoStubs: users,
+    sessionsStubs: baseSessions(),
+    bcryptStubs: bcrypt,
+  });
+
+  await assert.rejects(
+    () =>
+      svc.changePassword({
+        userId: 1,
+        currentPassword: "oldpass123",
+        newPassword: "newpass123",
+      }),
+    (err) => err.status === 401 && err.message === "Current password incorrect",
+  );
+});
+
+test("changePassword verifies current password, hashes new password, and invalidates sessions", async () => {
+  let passwordHashUpdate = null;
+  let invalidated = null;
+  const users = baseUsersRepo();
+  users.findById = async () => ({
+    id: 4,
+    username: "u",
+    email: "u@example.com",
+    password_hash: "hash:oldpass123",
+  });
+  users.updatePasswordHash = async (input) => {
+    passwordHashUpdate = input;
+    return true;
+  };
+
+  const sessions = baseSessions();
+  sessions.invalidateAllSessionsForUser = async (input) => {
+    invalidated = input;
+  };
+
+  const bcrypt = baseBcrypt();
+  const compares = [];
+  bcrypt.compare = async (plain, hash) => {
+    compares.push({ plain, hash });
+    return plain === "oldpass123";
+  };
+
+  const svc = buildService({
+    usersRepoStubs: users,
+    sessionsStubs: sessions,
+    bcryptStubs: bcrypt,
+  });
+
+  await svc.changePassword({
+    userId: 4,
+    currentPassword: "oldpass123",
+    newPassword: "newpass123",
+  });
+
+  assert.deepEqual(compares, [{ plain: "oldpass123", hash: "hash:oldpass123" }]);
+  assert.deepEqual(passwordHashUpdate, { id: 4, passwordHash: "hash:newpass123" });
+  assert.deepEqual(invalidated, { beekeeperId: 4 });
 });
 
 test("deleteUserAndSessions forbids deleting another user", async () => {
@@ -258,7 +376,7 @@ test("updateBeekeeperAlertSettings rejects partial threshold payload", async () 
     (err) =>
       err.status === 400 &&
       err.message ===
-        "warningLow, warningHigh, criticalLow, and criticalHigh must be provided together",
+      "warningLow, warningHigh, criticalLow, and criticalHigh must be provided together",
   );
 });
 
@@ -275,6 +393,7 @@ test("updateBeekeeperAlertSettings normalizes and maps updated settings", async 
       critical_low_threshold: 88,
       critical_high_threshold: 103,
       updated_at: "2026-03-31T12:00:00.000Z",
+      propagated_hive_count: 3,
     };
   };
 
@@ -302,5 +421,6 @@ test("updateBeekeeperAlertSettings normalizes and maps updated settings", async 
     criticalHigh: 103,
   });
   assert.equal(result.warningLow, 91);
+  assert.equal(result.propagatedHiveCount, 3);
   assert.equal(result.updatedAt, "2026-03-31T12:00:00.000Z");
 });

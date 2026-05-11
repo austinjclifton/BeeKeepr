@@ -24,12 +24,17 @@ const requireAuthModulePath = path.join(
   backendRoot,
   "src/middleware/requireAuth.js",
 );
+const requireCsrfModulePath = path.join(
+  backendRoot,
+  "src/middleware/requireCsrf.js",
+);
 
 function clearRequireCache() {
   delete require.cache[routesModulePath];
   delete require.cache[controllerModulePath];
   delete require.cache[serviceModulePath];
   delete require.cache[requireAuthModulePath];
+  delete require.cache[requireCsrfModulePath];
 }
 
 function buildTestApp({ serviceStubs, userId = 101 }) {
@@ -42,7 +47,20 @@ function buildTestApp({ serviceStubs, userId = 101 }) {
     exports: {
       requireAuth: (req, res, next) => {
         req.user = { id: userId };
+        req.session = { csrfToken: `csrf-${userId}` };
         next();
+      },
+    },
+  };
+
+  require.cache[requireCsrfModulePath] = {
+    id: requireCsrfModulePath,
+    filename: requireCsrfModulePath,
+    loaded: true,
+    exports: {
+      requireCsrf: (req, res, next) => {
+        if (req.get("x-csrf-token") === req.session?.csrfToken) return next();
+        return res.status(403).json({ error: "Invalid CSRF token" });
       },
     },
   };
@@ -165,6 +183,7 @@ test("POST /api/external-conditions/fetch calls service and returns condition", 
 
   const res = await request(app)
     .post("/api/external-conditions/fetch?hiveId=9")
+    .set("x-csrf-token", "csrf-12")
     .expect(200);
 
   assert.deepEqual(captured, { beekeeperId: 12, hiveId: 9 });

@@ -2,6 +2,10 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { apiFetch, setCsrfToken, setCurrentUser } from '../api';
 
+const SHOW_DEMO_LOGIN = import.meta.env.VITE_SHOW_DEMO_LOGIN === 'true';
+const DEMO_USERNAME = import.meta.env.VITE_DEMO_USERNAME || '';
+const DEMO_PASSWORD = import.meta.env.VITE_DEMO_PASSWORD || '';
+
 function ForgotPasswordModal({ onClose }) {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -33,16 +37,16 @@ function ForgotPasswordModal({ onClose }) {
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div style={{
-        background: 'white', borderRadius: '16px', padding: '32px',
+        background: 'var(--surface-elevated)', border: '1px solid var(--border)', borderRadius: '16px', padding: '32px',
         width: '100%', maxWidth: '400px',
         boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
         animation: 'fadeIn 0.2s ease',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <div style={{ fontSize: '17px', fontWeight: 800, color: '#1e2d4a' }}>Reset Password</div>
+          <div style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text-primary)' }}>Reset Password</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
         </div>
@@ -54,14 +58,14 @@ function ForgotPasswordModal({ onClose }) {
             </div>
             <button
               onClick={onClose}
-              style={{ width: '100%', padding: '10px', background: '#1e2d4a', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 700, fontSize: '14px', cursor: 'pointer' }}
+              style={{ width: '100%', padding: '10px', background: 'var(--amber)', color: '#050505', border: 'none', borderRadius: '10px', fontWeight: 800, fontSize: '14px', cursor: 'pointer' }}
             >
               Back to Login
             </button>
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
-            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px', lineHeight: 1.5 }}>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: 1.5 }}>
               Enter your email address and we'll send you a link to reset your password.
             </p>
             {status === 'error' && (
@@ -70,7 +74,7 @@ function ForgotPasswordModal({ onClose }) {
               </div>
             )}
             <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '7px', fontSize: '11px', fontWeight: 700, color: '#64748b', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              <label style={{ display: 'block', marginBottom: '7px', fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                 Email Address
               </label>
               <input
@@ -82,18 +86,18 @@ function ForgotPasswordModal({ onClose }) {
                 style={{
                   width: '100%', padding: '11px 14px',
                   border: '1.5px solid #e2e8f0', borderRadius: '10px',
-                  fontSize: '14px', color: '#1e2d4a', background: '#f8fafc',
+                  fontSize: '14px', color: 'var(--text-primary)', background: 'rgba(255,255,255,0.05)',
                   outline: 'none', fontFamily: 'inherit',
                 }}
-                onFocus={e => { e.target.style.borderColor = '#1e2d4a'; e.target.style.background = 'white'; }}
-                onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.background = '#f8fafc'; }}
+                onFocus={e => { e.target.style.borderColor = 'var(--amber)'; e.target.style.background = 'rgba(255,255,255,0.08)'; }}
+                onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.background = 'rgba(255,255,255,0.05)'; }}
               />
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button type="button" onClick={onClose} style={{ flex: 1, padding: '10px', border: '1.5px solid #e2e8f0', borderRadius: '10px', background: 'white', fontSize: '14px', fontWeight: 600, color: '#64748b', cursor: 'pointer' }}>
+              <button type="button" onClick={onClose} style={{ flex: 1, padding: '10px', border: '1.5px solid var(--border)', borderRadius: '10px', background: 'rgba(255,255,255,0.05)', fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer' }}>
                 Cancel
               </button>
-              <button type="submit" disabled={loading} style={{ flex: 1, padding: '10px', border: 'none', borderRadius: '10px', background: loading ? '#94a3b8' : '#1e2d4a', color: 'white', fontSize: '14px', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}>
+              <button type="submit" disabled={loading} style={{ flex: 1, padding: '10px', border: 'none', borderRadius: '10px', background: loading ? '#555' : 'var(--amber)', color: '#050505', fontSize: '14px', fontWeight: 800, cursor: loading ? 'not-allowed' : 'pointer' }}>
                 {loading ? 'Sending…' : 'Send Reset Link'}
               </button>
             </div>
@@ -106,21 +110,21 @@ function ForgotPasswordModal({ onClose }) {
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const demoConfigured = SHOW_DEMO_LOGIN && DEMO_USERNAME && DEMO_PASSWORD;
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
+  const performLogin = async (identifier, loginPassword) => {
     setError('');
     setLoading(true);
     try {
       const data = await apiFetch('/api/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ identifier: email, password }),
+        body: JSON.stringify({ identifier, password: loginPassword }),
       });
       setCsrfToken(data.csrfToken);
       setCurrentUser(data.user);
@@ -132,10 +136,29 @@ export default function LoginPage() {
     }
   };
 
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    await performLogin(identifier, password);
+  };
+
+  const fillDemoCredentials = () => {
+    if (!demoConfigured) return;
+    setIdentifier(DEMO_USERNAME);
+    setPassword(DEMO_PASSWORD);
+    setError('');
+  };
+
+  const loginWithDemoAccount = async () => {
+    if (!demoConfigured) return;
+    setIdentifier(DEMO_USERNAME);
+    setPassword(DEMO_PASSWORD);
+    await performLogin(DEMO_USERNAME, DEMO_PASSWORD);
+  };
+
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#eef0f4',
+      background: 'radial-gradient(circle at top right, rgba(245,185,66,0.12), transparent 30rem), var(--bg)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -146,7 +169,7 @@ export default function LoginPage() {
 
       <div style={{ width: '100%', maxWidth: '420px', animation: 'fadeIn 0.4s ease' }}>
 
-        {/* Logo header */}
+        {/* Brand header */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
             <div style={{
@@ -156,30 +179,31 @@ export default function LoginPage() {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-                <path d="M12 2C8 2 5 5 5 9c0 2.5 1.2 4.7 3 6.1V20a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-4.9c1.8-1.4 3-3.6 3-6.1 0-4-3-7-7-7z" fill="white" opacity="0.95"/>
+                <path d="M12 2C8 2 5 5 5 9c0 2.5 1.2 4.7 3 6.1V20a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-4.9c1.8-1.4 3-3.6 3-6.1 0-4-3-7-7-7z" fill="white" opacity="0.95" />
               </svg>
             </div>
             <div style={{ textAlign: 'left' }}>
-              <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--navy)', lineHeight: 1.1, letterSpacing: '-0.02em' }}>
-                Asheville
+              <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1, letterSpacing: '-0.02em' }}>
+                BeeKeepr
               </div>
             </div>
           </div>
         </div>
 
-        {/* Card */}
+        {/* Login card */}
         <div style={{
-          background: 'white',
+          background: 'var(--surface-elevated)',
+          border: '1px solid var(--border)',
           borderRadius: '16px',
-          boxShadow: '0 4px 24px rgba(30,45,74,0.10), 0 1px 4px rgba(30,45,74,0.06)',
+          boxShadow: 'var(--shadow-lg)',
           overflow: 'hidden',
         }}>
-          {/* Top accent bar */}
+          {/* Accent bar */}
           <div style={{ height: '4px', background: 'linear-gradient(90deg, var(--navy) 0%, var(--amber) 100%)' }} />
 
           <div style={{ padding: '36px 36px 32px' }}>
 
-            {/* Sign-up prompt — new */}
+            {/* Sign-up link */}
             <div style={{ marginBottom: '24px' }}>
               <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
                 Don't have an account?{' '}
@@ -194,7 +218,50 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Error */}
+            {/* Demo access */}
+            {SHOW_DEMO_LOGIN && (
+              <div style={{
+                marginBottom: '22px',
+                padding: '14px',
+                border: '1px solid rgba(245,185,66,0.35)',
+                borderRadius: '14px',
+                background: 'rgba(245,185,66,0.08)',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ color: 'var(--amber)', fontSize: '12px', fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                      Demo Account
+                    </div>
+                    <div style={{ marginTop: '4px', color: 'var(--text-secondary)', fontSize: '13px', lineHeight: 1.5 }}>
+                      {demoConfigured
+                        ? 'Use the read-only demo account to explore BeeKeepr with sample hive data.'
+                        : 'Demo login is enabled, but credentials are not configured for this environment.'}
+                    </div>
+                  </div>
+                  {demoConfigured && (
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={fillDemoCredentials}
+                        className="ghost-btn"
+                      >
+                        Use demo credentials
+                      </button>
+                      <button
+                        type="button"
+                        onClick={loginWithDemoAccount}
+                        className="primary-btn"
+                        disabled={loading}
+                      >
+                        Log in demo
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Error banner */}
             {error && (
               <div style={{
                 marginBottom: '20px',
@@ -210,7 +277,7 @@ export default function LoginPage() {
                 gap: '8px',
               }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
                 {error}
               </div>
@@ -218,36 +285,37 @@ export default function LoginPage() {
 
             <form onSubmit={handleLogin}>
 
-              {/* Email */}
+              {/* Identifier */}
               <div style={{ marginBottom: '18px' }}>
                 <label style={{
                   display: 'block', marginBottom: '7px',
                   fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)',
                   letterSpacing: '0.08em', textTransform: 'uppercase',
                 }}>
-                  Email Address
+                  Email or Username
                 </label>
                 <div style={{ position: 'relative' }}>
                   <span style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                      <polyline points="22,6 12,13 2,6"/>
+                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                      <polyline points="22,6 12,13 2,6" />
                     </svg>
                   </span>
                   <input
-                    type="email"
-                    placeholder="admin@gmail.com"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
+                    type="text"
+                    autoComplete="username"
+                    placeholder="beekeeper@example.com or beekeeper123"
+                    value={identifier}
+                    onChange={e => setIdentifier(e.target.value)}
                     required
                     style={{
                       width: '100%', padding: '11px 14px 11px 40px',
                       border: '1.5px solid var(--border)', borderRadius: '10px',
-                      fontSize: '14px', color: 'var(--text-primary)', background: '#f8fafc',
+                      fontSize: '14px', color: 'var(--text-primary)', background: 'rgba(255,255,255,0.05)',
                       outline: 'none', transition: 'border-color 0.15s, background 0.15s',
                     }}
-                    onFocus={e => { e.target.style.borderColor = 'var(--navy)'; e.target.style.background = 'white'; }}
-                    onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.background = '#f8fafc'; }}
+                    onFocus={e => { e.target.style.borderColor = 'var(--amber)'; e.target.style.background = 'rgba(255,255,255,0.08)'; }}
+                    onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.background = 'rgba(255,255,255,0.05)'; }}
                   />
                 </div>
               </div>
@@ -264,8 +332,8 @@ export default function LoginPage() {
                 <div style={{ position: 'relative' }}>
                   <span style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                     </svg>
                   </span>
                   <input
@@ -277,16 +345,16 @@ export default function LoginPage() {
                     style={{
                       width: '100%', padding: '11px 14px 11px 40px',
                       border: '1.5px solid var(--border)', borderRadius: '10px',
-                      fontSize: '14px', color: 'var(--text-primary)', background: '#f8fafc',
+                      fontSize: '14px', color: 'var(--text-primary)', background: 'rgba(255,255,255,0.05)',
                       outline: 'none', transition: 'border-color 0.15s, background 0.15s',
                     }}
-                    onFocus={e => { e.target.style.borderColor = 'var(--navy)'; e.target.style.background = 'white'; }}
-                    onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.background = '#f8fafc'; }}
+                    onFocus={e => { e.target.style.borderColor = 'var(--amber)'; e.target.style.background = 'rgba(255,255,255,0.08)'; }}
+                    onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.background = 'rgba(255,255,255,0.05)'; }}
                   />
                 </div>
               </div>
 
-              {/* Remember + Forgot */}
+              {/* Account options */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500 }}>
                   <input
@@ -318,15 +386,15 @@ export default function LoginPage() {
                 disabled={loading}
                 style={{
                   width: '100%', padding: '13px',
-                  background: loading ? '#94a3b8' : 'var(--navy)',
-                  color: 'white', border: 'none', borderRadius: '10px',
+                  background: loading ? '#555' : 'var(--amber)',
+                  color: '#050505', border: 'none', borderRadius: '10px',
                   fontWeight: 700, fontSize: '14px',
                   cursor: loading ? 'not-allowed' : 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                   transition: 'background 0.15s', letterSpacing: '0.01em',
                 }}
-                onMouseEnter={e => { if (!loading) e.currentTarget.style.background = 'var(--navy-light)'; }}
-                onMouseLeave={e => { if (!loading) e.currentTarget.style.background = 'var(--navy)'; }}
+                onMouseEnter={e => { if (!loading) e.currentTarget.style.background = 'var(--amber-light)'; }}
+                onMouseLeave={e => { if (!loading) e.currentTarget.style.background = 'var(--amber)'; }}
               >
                 {loading ? (
                   <>
@@ -337,7 +405,7 @@ export default function LoginPage() {
                   <>
                     Sign In
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                      <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
                     </svg>
                   </>
                 )}
@@ -349,7 +417,7 @@ export default function LoginPage() {
           {/* Footer */}
           <div style={{
             padding: '14px 36px',
-            background: '#f8fafc',
+            background: 'var(--surface)',
             borderTop: '1px solid var(--border)',
             textAlign: 'center',
           }}>

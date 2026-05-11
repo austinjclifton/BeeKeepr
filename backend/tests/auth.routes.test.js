@@ -111,7 +111,8 @@ function buildTestApp({ authContext, serviceStubs }) {
     exports: {
       requestResetForEmail: serviceStubs.requestResetForEmail,
       verifyResetToken: serviceStubs.verifyResetToken,
-      consumeResetTokenForUser: serviceStubs.consumeResetTokenForUser,
+      consumeResetTokenForBeekeeper:
+        serviceStubs.consumeResetTokenForBeekeeper,
     },
   };
 
@@ -151,8 +152,8 @@ function noops() {
       user: { id: 1, username: "u", email: "u@example.com" },
       session: { sessionToken: "sess-1", csrfToken: "csrf-1" },
     }),
-    resetPassword: async () => {},
-    changePassword: async () => {},
+    resetPassword: async () => { },
+    changePassword: async () => { },
     updateBeekeeperAlertSettings: async () => ({
       alertsEnabled: true,
       warningLow: 90,
@@ -161,11 +162,11 @@ function noops() {
       criticalHigh: 105,
       updatedAt: new Date().toISOString(),
     }),
-    deleteUserAndSessions: async () => {},
-    invalidateSession: async () => {},
-    requestResetForEmail: async () => {},
-    verifyResetToken: async () => ({ userId: 1 }),
-    consumeResetTokenForUser: async () => {},
+    deleteUserAndSessions: async () => { },
+    invalidateSession: async () => { },
+    requestResetForEmail: async () => { },
+    verifyResetToken: async () => ({ beekeeperId: 1 }),
+    consumeResetTokenForBeekeeper: async () => { },
   };
 }
 
@@ -205,13 +206,66 @@ test("POST /api/auth/register trims inputs and returns user+csrf", async () => {
   assert.deepEqual(captured, {
     username: "beek",
     email: "beek@example.com",
-    password: "secret",
+    password: "  secret  ",
     context: undefined,
   });
 
   assert.equal(res.body.user.id, 2);
   assert.equal(res.body.csrfToken, "csrf-2");
   assert.equal(res.headers["x-session-token"], "sess-2");
+});
+
+test("POST /api/auth/login accepts identifier and returns user+csrf", async () => {
+  let captured = null;
+  const stubs = noops();
+  stubs.login = async (input) => {
+    captured = input;
+    return {
+      user: { id: 3, username: "beek", email: "beek@example.com" },
+      session: { sessionToken: "sess-3", csrfToken: "csrf-3" },
+    };
+  };
+
+  const app = buildTestApp({ authContext: null, serviceStubs: stubs });
+
+  const res = await request(app)
+    .post("/api/auth/login")
+    .send({ identifier: " beek ", password: "password123" })
+    .expect(200);
+
+  assert.deepEqual(captured, {
+    identifier: "beek",
+    password: "password123",
+    context: undefined,
+  });
+  assert.equal(res.body.user.username, "beek");
+  assert.equal(res.body.csrfToken, "csrf-3");
+  assert.equal(res.headers["x-session-token"], "sess-3");
+});
+
+test("POST /api/auth/login accepts legacy email field", async () => {
+  let captured = null;
+  const stubs = noops();
+  stubs.login = async (input) => {
+    captured = input;
+    return {
+      user: { id: 4, username: "beek", email: input.identifier },
+      session: { sessionToken: "sess-4", csrfToken: "csrf-4" },
+    };
+  };
+
+  const app = buildTestApp({ authContext: null, serviceStubs: stubs });
+
+  await request(app)
+    .post("/api/auth/login")
+    .send({ email: " beek@example.com ", password: "password123" })
+    .expect(200);
+
+  assert.deepEqual(captured, {
+    identifier: "beek@example.com",
+    password: "password123",
+    context: undefined,
+  });
 });
 
 test("POST /api/auth/logout invalidates session and clears cookie", async () => {

@@ -300,10 +300,38 @@ exports.getAlertContextForDevice = async ({ deviceId }) => {
       b.id AS beekeeper_id,
       b.email,
       b.alerts_enabled,
-      b.warning_low_threshold,
-      b.warning_high_threshold,
-      b.critical_low_threshold,
-      b.critical_high_threshold
+      CASE
+        WHEN h.warning_low_threshold IS NOT NULL
+          AND h.warning_high_threshold IS NOT NULL
+          AND h.critical_low_threshold IS NOT NULL
+          AND h.critical_high_threshold IS NOT NULL
+        THEN h.warning_low_threshold
+        ELSE b.warning_low_threshold
+      END AS warning_low_threshold,
+      CASE
+        WHEN h.warning_low_threshold IS NOT NULL
+          AND h.warning_high_threshold IS NOT NULL
+          AND h.critical_low_threshold IS NOT NULL
+          AND h.critical_high_threshold IS NOT NULL
+        THEN h.warning_high_threshold
+        ELSE b.warning_high_threshold
+      END AS warning_high_threshold,
+      CASE
+        WHEN h.warning_low_threshold IS NOT NULL
+          AND h.warning_high_threshold IS NOT NULL
+          AND h.critical_low_threshold IS NOT NULL
+          AND h.critical_high_threshold IS NOT NULL
+        THEN h.critical_low_threshold
+        ELSE b.critical_low_threshold
+      END AS critical_low_threshold,
+      CASE
+        WHEN h.warning_low_threshold IS NOT NULL
+          AND h.warning_high_threshold IS NOT NULL
+          AND h.critical_low_threshold IS NOT NULL
+          AND h.critical_high_threshold IS NOT NULL
+        THEN h.critical_high_threshold
+        ELSE b.critical_high_threshold
+      END AS critical_high_threshold
     FROM device d
     JOIN hive h ON h.id = d.hive_id
     JOIN beekeeper b ON b.id = h.beekeeper_id

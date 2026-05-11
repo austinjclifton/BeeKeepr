@@ -1,597 +1,808 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import Navigation from "../components/Navigation";
-import { apiFetch } from '../api';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import Navigation from '../components/Navigation';
+import DashboardSection from '../components/analytics/DashboardSection';
+import HiveSelector from '../components/analytics/HiveSelector';
+import StatCard from '../components/analytics/StatCard';
+import StatusBadge from '../components/analytics/StatusBadge';
+import TimeRangeToggle from '../components/analytics/TimeRangeToggle';
+import { EmptyState, ErrorState, LoadingState } from '../components/analytics/StateBlocks';
+import {
+  downloadAnalyticsCsv,
+  getAnalyticsLocations,
+} from '../api';
+import { useAnalyticsRange } from '../hooks/useAnalyticsRange';
 import { useAuth } from '../hooks/useAuth';
+import { useHiveAnalytics } from '../hooks/useHiveAnalytics';
+import { useHiveComparison } from '../hooks/useHiveComparison';
+import { useHiveStatus } from '../hooks/useHiveStatus';
+import { useSelectedHive } from '../hooks/useSelectedHive';
+import {
+  formatAggregationInterval,
+  formatCount,
+  formatDateTime,
+  formatMetric,
+  formatTemperature,
+  getHiveId,
+} from '../utils/analyticsFormat';
 
-/* ── Hamburger trigger ─────────────────────────────────────────── */
+// Query option lists
+const BUCKET_OPTIONS = [
+  { value: 'auto', label: 'Auto' },
+  { value: '10m', label: '10 minutes' },
+  { value: '30m', label: '30 minutes' },
+  { value: 'hour', label: '1 hour' },
+  { value: '6h', label: '6 hours' },
+  { value: 'day', label: '1 day' },
+];
+
+const EXPORT_INCLUDE_OPTIONS = [
+  { key: 'includeReadings', label: 'Temperature readings' },
+  { key: 'includeExternal', label: 'External conditions' },
+  { key: 'includeHiveDevice', label: 'Hive/device metadata' },
+  { key: 'includeAlerts', label: 'Alert data' },
+];
+
+const MultiHiveComparisonChart = lazy(() => import('../components/analytics/MultiHiveComparisonChart'));
+const TemperatureChart = lazy(() => import('../components/analytics/TemperatureChart'));
+
 function HamburgerBtn() {
   return (
     <button
       className="mobile-menu-btn"
+      type="button"
       onClick={() => window.dispatchEvent(new Event('openMobileNav'))}
+      aria-label="Open navigation"
     >
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-        <line x1="3" y1="6" x2="21" y2="6"/>
-        <line x1="3" y1="12" x2="21" y2="12"/>
-        <line x1="3" y1="18" x2="21" y2="18"/>
+        <line x1="3" y1="6" x2="21" y2="6" />
+        <line x1="3" y1="12" x2="21" y2="12" />
+        <line x1="3" y1="18" x2="21" y2="18" />
       </svg>
     </button>
   );
 }
 
-function fmtDate(d) {
-  return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+function toLocalDateTimeInput(date) {
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
-function fmtTime(d) {
-  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+function defaultStartInput() {
+  return toLocalDateTimeInput(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
 }
 
-function buildChartDataFromAPI(readings, externalConditions, range = '24H') {
-  if (!readings || readings.length === 0) return null;
+function defaultEndInput() {
+  return toLocalDateTimeInput(new Date());
+}
 
-  let processedReadings = readings;
-  if (range === '7D') {
-    const dayBuckets = {};
-    readings.forEach(r => {
-      const d = new Date(r.bucket_at);
-      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-      if (!dayBuckets[key]) dayBuckets[key] = { temps: [], rssis: [], bucket_at: r.bucket_at };
-      dayBuckets[key].temps.push(parseFloat(r.temperature));
-      if (r.rssi != null) dayBuckets[key].rssis.push(r.rssi);
-    });
-    processedReadings = Object.entries(dayBuckets).map(([, data]) => ({
-      bucket_at: data.bucket_at,
-      temperature: data.temps.reduce((a, b) => a + b, 0) / data.temps.length,
-      rssi: data.rssis.length ? data.rssis.reduce((a, b) => a + b, 0) / data.rssis.length : null,
-    }));
+function describeQuery(query) {
+  if (query?.range) {
+    const label = {
+      '1d': 'Last 1 day',
+      '3d': 'Last 3 days',
+      '7d': 'Last 7 days',
+      '1m': 'Last 1 month',
+    }[query.range];
+    return label || query.range.toUpperCase();
   }
 
-  const extByTs = {};
-  if (externalConditions && externalConditions.length > 0) {
-    externalConditions.forEach(ec => {
-      const ts = Math.floor(new Date(ec.bucket_at).getTime() / (10 * 60 * 1000));
-      extByTs[ts] = ec.temperature;
-    });
+  return `${formatDateTime(query?.start)} to ${formatDateTime(query?.end)}`;
+}
+
+function withQueryOptions(baseQuery, bucket, locationId) {
+  const next = baseQuery?.range
+    ? { range: baseQuery.range }
+    : { start: baseQuery?.start, end: baseQuery?.end };
+
+  if (bucket && bucket !== 'auto') next.bucket = bucket;
+  if (locationId) next.locationId = Number(locationId);
+  return next;
+}
+
+function locationDisplayName(location) {
+  if (!location) return 'All locations';
+  if (location.displayName) return location.displayName;
+  if (location.name) return location.name;
+  const lat = Number(location.lat);
+  const lon = Number(location.lon);
+  if (Number.isFinite(lat) && Number.isFinite(lon)) return `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+  return `Location ${location.id}`;
+}
+
+function presetWindow(range) {
+  const end = new Date();
+  const start = new Date(end);
+  if (range === '1m') {
+    start.setMonth(start.getMonth() - 1);
+  } else {
+    const days = { '1d': 1, '3d': 3, '7d': 7 }[range] || 7;
+    start.setDate(start.getDate() - days);
+  }
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function resolveExportWindow(rangeMode, appliedQuery, customStartInput, customEndInput) {
+  if (rangeMode === 'all') return {};
+
+  if (rangeMode === 'active') {
+    if (appliedQuery.range) return presetWindow(appliedQuery.range);
+    return { start: appliedQuery.start, end: appliedQuery.end };
   }
 
-  const labels = processedReadings.map(r => {
-    const d = new Date(r.bucket_at);
-    if (range === '24H') return fmtTime(d);
-    if (range === '7D') return fmtDate(d);
-    return `${fmtDate(d)} ${fmtTime(d)}`;
-  });
-
-  const internalAvg = processedReadings.map(r => parseFloat(parseFloat(r.temperature).toFixed(1)));
-
-  const externalAvg = processedReadings.map(r => {
-    const ts = Math.floor(new Date(r.bucket_at).getTime() / (10 * 60 * 1000));
-    for (const offset of [0, 1, -1]) {
-      const val = extByTs[ts + offset];
-      if (val !== undefined && val !== null) return parseFloat(parseFloat(val).toFixed(1));
-    }
-    return null;
-  });
-
-  const tempDiff = internalAvg.map((intT, i) => {
-    const extT = externalAvg[i];
-    return extT !== null ? parseFloat((intT - extT).toFixed(1)) : null;
-  });
-
-  return { labels, internalAvg, externalAvg, tempDiff };
-}
-
-function buildSummaries(readings, externalConditions) {
-  if (!readings || readings.length === 0) return [];
-
-  const extByTs = {};
-  if (externalConditions && externalConditions.length > 0) {
-    externalConditions.forEach(ec => {
-      const ts = Math.floor(new Date(ec.bucket_at).getTime() / (10 * 60 * 1000));
-      extByTs[ts] = ec.temperature;
-    });
+  if (['1d', '3d', '7d', '1m'].includes(rangeMode)) {
+    return presetWindow(rangeMode);
   }
 
-  const dayMap = {};
-  readings.forEach(r => {
-    const d = new Date(r.bucket_at);
-    const day = fmtDate(d);
-    if (!dayMap[day]) dayMap[day] = { temps: [], extTemps: [], rssis: [] };
-    dayMap[day].temps.push(parseFloat(r.temperature));
-    if (r.rssi != null) dayMap[day].rssis.push(r.rssi);
-    const ts = Math.floor(d.getTime() / (10 * 60 * 1000));
-    for (const offset of [0, 1, -1]) {
-      const val = extByTs[ts + offset];
-      if (val !== undefined && val !== null) { dayMap[day].extTemps.push(parseFloat(val)); break; }
-    }
-  });
-
-  return Object.entries(dayMap)
-    .sort(([a], [b]) => {
-      const toMs = s => { const [m, d] = s.split('/'); return new Date(new Date().getFullYear(), m - 1, d).getTime(); };
-      return toMs(b) - toMs(a);
-    })
-    .map(([date, { temps, extTemps, rssis }]) => {
-      const intAvgVal = temps.reduce((a, b) => a + b, 0) / temps.length;
-      const extAvgVal = extTemps.length ? extTemps.reduce((a, b) => a + b, 0) / extTemps.length : null;
-      const diffVal   = extAvgVal !== null ? intAvgVal - extAvgVal : null;
-      const isNormal  = diffVal !== null ? (diffVal >= 9 && diffVal <= 45) : true;
-      const avgRssi   = rssis.length ? Math.round(rssis.reduce((a, b) => a + b, 0) / rssis.length) : null;
-      return {
-        date,
-        intAvg:  `${intAvgVal.toFixed(1)}°`,
-        extAvg:  extAvgVal !== null ? `${extAvgVal.toFixed(1)}°` : 'N/A',
-        diff:    diffVal !== null ? `${diffVal >= 0 ? '+' : ''}${diffVal.toFixed(1)}°` : 'N/A',
-        status:  isNormal ? 'Normal' : 'Warning',
-        avgRssi: avgRssi !== null ? `${avgRssi} dBm` : 'N/A',
-      };
-    });
-}
-
-function AnalyticsChart({ data, view }) {
-  const canvasRef = useRef(null);
-  const chartRef = useRef(null);
-
-  useEffect(() => {
-    if (!canvasRef.current || !data) return;
-
-    const buildChart = () => {
-      if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; }
-      const ctx = canvasRef.current.getContext('2d');
-      const Chart = window.Chart;
-
-      const datasets = view === 'comparison'
-        ? [
-            { type: 'bar', label: 'Temp Difference (°F)', data: data.tempDiff, backgroundColor: 'rgba(34,197,94,0.75)', borderWidth: 0, barPercentage: 0.85, categoryPercentage: 0.9, order: 3 },
-            { type: 'line', label: 'Internal Avg (°F)', data: data.internalAvg, borderColor: '#f5a623', borderWidth: 2.5, backgroundColor: 'transparent', fill: false, tension: 0.3, pointRadius: 0, spanGaps: false, order: 1 },
-            { type: 'line', label: 'External Avg (°F)', data: data.externalAvg, borderColor: '#1e2d4a', borderWidth: 2, borderDash: [5, 4], backgroundColor: 'transparent', fill: false, tension: 0.45, pointRadius: 0, spanGaps: false, order: 2 },
-          ]
-        : [
-            { type: 'line', label: 'Internal Avg (°F)', data: data.internalAvg, borderColor: '#f5a623', borderWidth: 2.5, backgroundColor: 'rgba(245,166,35,0.15)', fill: true, tension: 0.3, pointRadius: 0, spanGaps: false, order: 1 },
-            { type: 'line', label: 'External Avg (°F)', data: data.externalAvg, borderColor: '#1e2d4a', borderWidth: 2, backgroundColor: 'rgba(30,45,74,0.10)', fill: true, tension: 0.45, pointRadius: 0, spanGaps: false, order: 2 },
-          ];
-
-      chartRef.current = new Chart(ctx, {
-        data: { labels: data.labels, datasets },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          interaction: { mode: 'index', intersect: false },
-          animation: { duration: 500 },
-          plugins: {
-            legend: {
-              display: true, position: 'bottom', align: 'start',
-              labels: { color: '#64748b', font: { size: 11, family: "'DM Sans', system-ui" }, boxWidth: 12, boxHeight: 12, padding: 20, usePointStyle: true, pointStyleWidth: 12 },
-            },
-            tooltip: {
-              backgroundColor: 'rgba(255,255,255,0.97)', titleColor: '#1e2d4a', bodyColor: '#64748b',
-              borderColor: '#e2e8f0', borderWidth: 1, padding: 10, cornerRadius: 0,
-              callbacks: { label: (c) => c.parsed.y != null ? `  ${c.dataset.label}: ${c.parsed.y.toFixed(1)}` : null },
-            },
-          },
-          scales: {
-            x: {
-              grid: { color: 'rgba(100,116,139,0.10)', borderDash: [3,3] }, border: { display: false },
-              ticks: { color: '#94a3b8', font: { size: 10, family: "'DM Sans', system-ui" }, maxRotation: 0, autoSkip: true },
-            },
-            y: {
-              position: 'left', grid: { color: 'rgba(100,116,139,0.10)', borderDash: [3,3] }, border: { display: false },
-              ticks: { color: '#94a3b8', font: { size: 10, family: "'DM Sans', system-ui" }, maxTicksLimit: 6, callback: v => `${v}°F` }, min: 0,
-            },
-          },
-        },
-      });
-    };
-
-    if (window.Chart) { buildChart(); } else {
-      const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
-      script.onload = buildChart;
-      document.head.appendChild(script);
-    }
-
-    return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
-  }, [data, view]);
-
-  return <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />;
-}
-
-const RANGE_DAYS   = { '24H': 1, '2D': 2, '7D': 7 };
-const RANGE_LIMITS = { '24H': 300, '2D': 600, '7D': 1500 };
-const FILTER_OPTIONS = ['All', 'Normal', 'Warning'];
-const AUTO_REFRESH_MS = 5 * 60 * 1000;
-
-// Exports the raw chart readings (matching the selected graph range exactly)
-function exportChartToCSV(readings, externalConditions, range) {
-  const extByTs = {};
-  (externalConditions || []).forEach(ec => {
-    const ts = Math.floor(new Date(ec.bucket_at).getTime() / (10 * 60 * 1000));
-    extByTs[ts] = ec.temperature;
-  });
-
-  const header = 'Time,Internal Temp (°F),External Temp (°F)\n';
-  const rows = readings.map(r => {
-    const d = new Date(r.bucket_at);
-    const label = range === '7D'
-      ? fmtDate(d)
-      : `${fmtDate(d)} ${fmtTime(d)}`;
-    const intTemp = parseFloat(r.temperature).toFixed(1);
-    const ts = Math.floor(d.getTime() / (10 * 60 * 1000));
-    let extTemp = '';
-    for (const offset of [0, 1, -1]) {
-      const val = extByTs[ts + offset];
-      if (val !== undefined && val !== null) { extTemp = parseFloat(val).toFixed(1); break; }
-    }
-    return `${label},${intTemp},${extTemp}`;
-  }).join('\n');
-
-  const blob = new Blob([header + rows], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = `beehive-analytics-${range}.csv`; a.click();
-  URL.revokeObjectURL(url);
+  const start = new Date(customStartInput);
+  const end = new Date(customEndInput);
+  if (!customStartInput || !customEndInput || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    throw new Error('Choose a valid export start and end date.');
+  }
+  if (start.getTime() >= end.getTime()) {
+    throw new Error('Export start must be before export end.');
+  }
+  return { start: start.toISOString(), end: end.toISOString() };
 }
 
 export default function Analytics() {
+  // Query and export state
   const { ready: authReady, error: authError } = useAuth();
-  const [range, setRange] = useState('24H');
-  const [view] = useState('ranges');
-  const [chartData, setChartData] = useState(null);
-  const [allSummaries, setAllSummaries] = useState([]);
-  const [filterIdx, setFilterIdx] = useState(0);
-  const [visibleCount, setVisibleCount] = useState(5);
-  const [toast, setToast] = useState(null);
-  const [dataLoading, setDataLoading] = useState(false);
-  const [hiveId, setHiveId] = useState(null);
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  const { range, setRange } = useAnalyticsRange('7d');
+  const [mode, setMode] = useState('preset');
+  const [bucket, setBucket] = useState('auto');
+  const [locationId, setLocationId] = useState('');
+  const [locationsState, setLocationsState] = useState({ locations: [], loading: false, error: '' });
+  const [startInput, setStartInput] = useState(defaultStartInput);
+  const [endInput, setEndInput] = useState(defaultEndInput);
+  const [queryError, setQueryError] = useState('');
+  const [appliedQuery, setAppliedQuery] = useState({ range: '7d' });
+  const [exportScope, setExportScope] = useState('user');
+  const [exportHiveId, setExportHiveId] = useState('');
+  const [exportLocationId, setExportLocationId] = useState('');
+  const [exportRangeMode, setExportRangeMode] = useState('active');
+  const [exportStartInput, setExportStartInput] = useState(defaultStartInput);
+  const [exportEndInput, setExportEndInput] = useState(defaultEndInput);
+  const [exportIncludes, setExportIncludes] = useState({
+    includeReadings: true,
+    includeExternal: true,
+    includeHiveDevice: true,
+    includeAlerts: false,
+  });
+  const [exportStatus, setExportStatus] = useState({ loading: false, error: '', success: '' });
+  const queryLabel = describeQuery(appliedQuery);
+  const chartRange = appliedQuery.range || 'custom';
 
-  const hiveIdRef = useRef(null);
-  // Store the raw chart readings and external conditions for export
-  const chartReadingsRef = useRef([]);
-  const chartExtRef = useRef([]);
+  // Shared hive data
+  const status = useHiveStatus(appliedQuery, { enabled: authReady && !authError });
+  const { hives } = status;
+  const { selectedHive, selectedHiveId, setSelectedHiveId } = useSelectedHive(hives);
+  const selectedId = Number(selectedHiveId);
+  const selectedAnalytics = useHiveAnalytics(selectedId, appliedQuery, {
+    enabled: authReady && !authError && Number.isInteger(selectedId) && selectedId > 0,
+  });
 
+  const hiveIds = useMemo(
+    () => hives.map(getHiveId).filter(Boolean),
+    [hives],
+  );
+  const hiveIdsKey = hiveIds.join(',');
+  const [compareIds, setCompareIds] = useState([]);
+  const locations = locationsState.locations;
+
+  // Location filter state
+  const selectedLocation = useMemo(
+    () => locations.find(location => String(location.id) === String(locationId)) ?? null,
+    [locations, locationId],
+  );
+
+  // Load owned locations
   useEffect(() => {
-    if (!authReady || authError) return;
-    apiFetch('/api/hives')
-      .then(res => {
-        const hives = res?.hives ?? [];
-        if (hives.length > 0) {
-          hiveIdRef.current = hives[0].id;
-          setHiveId(hives[0].id);
-          loadData('24H', hives[0].id);
+    let cancelled = false;
+    if (!authReady || authError) return () => { cancelled = true; };
+
+    async function loadLocations() {
+      setLocationsState(prev => ({ ...prev, loading: true, error: '' }));
+      try {
+        const data = await getAnalyticsLocations();
+        if (!cancelled) {
+          setLocationsState({
+            locations: data?.locations ?? [],
+            loading: false,
+            error: '',
+          });
         }
-      })
-      .catch(() => {});
+      } catch (err) {
+        if (!cancelled) {
+          setLocationsState({
+            locations: [],
+            loading: false,
+            error: err.message || 'Failed to load locations',
+          });
+        }
+      }
+    }
+
+    loadLocations();
+    return () => { cancelled = true; };
   }, [authReady, authError]);
 
-  const loadData = useCallback(async (selectedRange, hId) => {
-    const id = hId ?? hiveIdRef.current;
-    if (!id) return;
+  // Seed comparison picks
+  useEffect(() => {
+    setCompareIds(prev => {
+      const valid = prev.filter(id => hiveIds.includes(id));
+      if (valid.length >= 2 || hiveIds.length < 2) return valid;
+      return hiveIds.slice(0, Math.min(5, hiveIds.length));
+    });
+  }, [hiveIdsKey]);
 
-    const days = RANGE_DAYS[selectedRange];
-    const limit = RANGE_LIMITS[selectedRange] ?? 500;
-    setDataLoading(true);
+  // Multi-hive comparison data
+  const comparison = useHiveComparison(compareIds, appliedQuery, {
+    enabled: authReady && !authError && compareIds.length >= 2,
+  });
+
+  // Selected hive view state
+  const summary = selectedAnalytics.summary ?? {};
+  const selectedName = selectedHive?.name || (selectedId ? `Hive ${selectedId}` : 'No hive selected');
+  const hasStatusResults = hives.length > 0;
+  const showRefreshingResults = status.loading && hasStatusResults;
+  const actualBucketSize =
+    selectedAnalytics.bucketSize ||
+    comparison.comparison?.bucketSize ||
+    status.bucketSize ||
+    appliedQuery.bucket ||
+    null;
+  const bucketContext = bucket === 'auto'
+    ? `Auto${actualBucketSize ? ` (${formatAggregationInterval(actualBucketSize)})` : ''}`
+    : formatAggregationInterval(bucket);
+  const locationContext = selectedLocation ? locationDisplayName(selectedLocation) : 'All locations';
+
+  // Query controls
+  const handlePresetRange = (nextRange) => {
+    setMode('preset');
+    setRange(nextRange);
+    setQueryError('');
+    setAppliedQuery(withQueryOptions({ range: nextRange }, bucket, locationId));
+  };
+
+  const applyCustomRange = () => {
+    const start = new Date(startInput);
+    const end = new Date(endInput);
+
+    if (!startInput || !endInput) {
+      setQueryError('Choose both a start and end date.');
+      return;
+    }
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      setQueryError('Choose valid start and end dates.');
+      return;
+    }
+    if (start.getTime() >= end.getTime()) {
+      setQueryError('Start date must be before end date.');
+      return;
+    }
+
+    setMode('custom');
+    setQueryError('');
+    setAppliedQuery(withQueryOptions({
+      start: start.toISOString(),
+      end: end.toISOString(),
+    }, bucket, locationId));
+  };
+
+  const applyCurrentOptions = (nextBucket = bucket, nextLocationId = locationId) => {
+    setAppliedQuery(prev => withQueryOptions(prev, nextBucket, nextLocationId));
+  };
+
+  const handleBucketChange = (nextBucket) => {
+    setBucket(nextBucket);
+    setQueryError('');
+    applyCurrentOptions(nextBucket, locationId);
+  };
+
+  const handleLocationChange = (nextLocationId) => {
+    setLocationId(nextLocationId);
+    setCompareIds([]);
+    setQueryError('');
+    applyCurrentOptions(bucket, nextLocationId);
+    if (nextLocationId && exportScope === 'user') {
+      setExportScope('location');
+      setExportLocationId(nextLocationId);
+    }
+  };
+
+  const toggleCompareHive = (id) => {
+    setCompareIds(prev => {
+      if (prev.includes(id)) return prev.filter(item => item !== id);
+      if (prev.length >= 10) return prev;
+      return [...prev, id];
+    });
+  };
+
+  const handleExportIncludeChange = (key) => {
+    setExportIncludes(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // CSV export action
+  const handleDownloadCsv = async () => {
+    setExportStatus({ loading: true, error: '', success: '' });
     try {
-      const chartSince = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
-      const summarySince = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+      if (!Object.values(exportIncludes).some(Boolean)) {
+        throw new Error('Select at least one dataset to export.');
+      }
 
-      const [chartReadingsRes, chartExtRes, summaryReadingsRes, summaryExtRes] = await Promise.allSettled([
-        apiFetch(`/api/readings/since?hiveId=${id}&since=${chartSince}&order=asc&limit=${limit}`),
-        apiFetch(`/api/external-conditions/since?hiveId=${id}&since=${chartSince}&order=asc&limit=${limit}`),
-        apiFetch(`/api/readings/since?hiveId=${id}&since=${summarySince}&order=asc&limit=5000`),
-        apiFetch(`/api/external-conditions/since?hiveId=${id}&since=${summarySince}&order=asc&limit=5000`),
-      ]);
+      const dateWindow = resolveExportWindow(
+        exportRangeMode,
+        appliedQuery,
+        exportStartInput,
+        exportEndInput,
+      );
+      const params = {
+        scope: exportScope,
+        ...dateWindow,
+        ...exportIncludes,
+      };
 
-      const chartReadings = chartReadingsRes.status === 'fulfilled' ? (chartReadingsRes.value?.readings ?? []) : [];
-      const chartExt      = chartExtRes.status === 'fulfilled'      ? (chartExtRes.value?.externalConditions ?? []) : [];
-      const summaryReadings = summaryReadingsRes.status === 'fulfilled' ? (summaryReadingsRes.value?.readings ?? []) : [];
-      const summaryExt      = summaryExtRes.status === 'fulfilled'      ? (summaryExtRes.value?.externalConditions ?? []) : [];
+      if (exportScope === 'hive') {
+        const hiveId = exportHiveId || selectedHiveId;
+        if (!hiveId) throw new Error('Choose a hive for this export.');
+        params.hiveId = hiveId;
+      }
 
-      // Store raw chart data for export so it always matches the selected range
-      chartReadingsRef.current = chartReadings;
-      chartExtRef.current = chartExt;
+      if (exportScope === 'location') {
+        const selectedExportLocationId = exportLocationId || locationId;
+        if (!selectedExportLocationId) throw new Error('Choose a location for this export.');
+        params.locationId = selectedExportLocationId;
+      }
 
-      const realData = buildChartDataFromAPI(chartReadings, chartExt, selectedRange);
-      setChartData(realData ?? null);
-
-      const summaryData = buildSummaries(summaryReadings, summaryExt);
-      setAllSummaries(summaryData);
-    } catch {
-      chartReadingsRef.current = [];
-      chartExtRef.current = [];
-      setChartData(null);
-      setAllSummaries([]);
-    } finally {
-      setDataLoading(false);
-      setVisibleCount(7);
+      const { blob, filename } = await downloadAnalyticsCsv(params);
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = href;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(href);
+      setExportStatus({ loading: false, error: '', success: `Downloaded ${filename}` });
+    } catch (err) {
+      setExportStatus({
+        loading: false,
+        error: err.message || 'Failed to download CSV',
+        success: '',
+      });
     }
-  }, []);
-
-  useEffect(() => {
-    if (!authReady || authError) return;
-    if (hiveIdRef.current) {
-      loadData(range, hiveIdRef.current);
-    }
-  }, [range, loadData, authReady, authError]);
-
-  useEffect(() => {
-    if (!autoRefresh) return;
-    const id = setInterval(() => {
-      if (hiveIdRef.current) loadData(range, hiveIdRef.current);
-    }, AUTO_REFRESH_MS);
-    return () => clearInterval(id);
-  }, [range, loadData, autoRefresh]);
-
-  const handleRefresh = () => {
-    if (hiveIdRef.current && !dataLoading) loadData(range, hiveIdRef.current);
   };
-
-  const showToast = (msg, ok = true) => {
-    setToast({ msg, ok });
-    setTimeout(() => setToast(null), 2500);
-  };
-
-  const handleExport = () => {
-    if (!chartReadingsRef.current.length) return;
-    exportChartToCSV(chartReadingsRef.current, chartExtRef.current, range);
-    showToast(`Exported ${chartReadingsRef.current.length} rows as CSV`);
-  };
-
-  const handleFilterCycle = () => {
-    setFilterIdx(i => (i + 1) % FILTER_OPTIONS.length);
-  };
-
-  const currentFilter = FILTER_OPTIONS[filterIdx];
-  const filteredSummaries = currentFilter === 'All'
-    ? allSummaries
-    : allSummaries.filter(r => r.status === currentFilter);
-  const visibleSummaries = filteredSummaries.slice(0, visibleCount);
-  const hasMore = visibleCount < filteredSummaries.length;
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
+    <div className="app-shell">
       <Navigation />
-      <main style={{ flex: 1, overflow: 'auto', minWidth: 0, position: 'relative' }}>
-        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-
-        {toast && (
-          <div style={{
-            position: 'fixed', top: '20px', right: '20px', zIndex: 1000,
-            background: toast.ok ? '#1e2d4a' : '#ef4444',
-            color: 'white', padding: '10px 18px',
-            fontSize: '13px', fontWeight: 600,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            animation: 'fadeIn 0.2s ease',
-          }}>
-            {toast.msg}
-          </div>
-        )}
-
-        {/* ── Page header ── */}
-        <div className="analytics-topbar mob-topbar-pad" style={{ padding: '20px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', background: 'white' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <HamburgerBtn />
-            <span style={{ fontSize: '16px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Analytics</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 500 }}>HIVE:</span>
-            <span style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a' }}>
-              {hiveId ? `#${hiveId}` : '—'}
-            </span>
-            <span className="status-dot" style={{ width: '10px', height: '10px', background: '#22c55e', display: 'inline-block', borderRadius: '50%', boxShadow: '0 0 0 3px rgba(34,197,94,0.2)' }} />
-          </div>
-        </div>
-
-        <div className="mob-pad" style={{ padding: '24px 28px 28px' }}>
-
-          {/* ── Section header with range + export ── */}
-          <div className="analytics-topbar" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px', gap: '12px' }}>
+      <main className="page-main">
+        <div className="page-content">
+          <header className="page-header analytics-header">
             <div>
-              <h1 style={{ fontSize: '20px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.02em', textTransform: 'uppercase' }}>Performance Reports</h1>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                Data aggregation: {range === '7D' ? 'daily avg' : '10 mins'}
-                {dataLoading && ' · Loading…'}
+              <div className="page-title-row">
+                <HamburgerBtn />
+                <div className="page-kicker">Analytics</div>
               </div>
+              <h1>Historical Analysis</h1>
+              <p className="page-subtitle">Search specific windows, inspect one hive, and compare colonies over time.</p>
             </div>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-              <div className="range-btn-group" style={{ display: 'flex', background: 'white', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
-                {['24H', '2D', '7D'].map(r => (
-                  <button key={r} onClick={() => setRange(r)} style={{
-                    padding: '7px 16px', border: 'none',
-                    background: range === r ? '#1e2d4a' : 'white',
-                    color: range === r ? 'white' : '#64748b',
-                    fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
-                    opacity: dataLoading ? 0.6 : 1,
-                  }}>{r}</button>
-                ))}
-              </div>
-              <button
-                onClick={handleExport}
-                disabled={!chartData}
-                style={{
-                  padding: '7px 14px', border: '1.5px solid #e2e8f0',
-                  background: 'white', color: '#1e2d4a', fontSize: '12px', fontWeight: 700,
-                  cursor: !chartData ? 'not-allowed' : 'pointer',
-                  opacity: !chartData ? 0.5 : 1,
-                  display: 'flex', alignItems: 'center', gap: '6px',
-                  boxShadow: 'var(--shadow-sm)',
-                }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                Export
-              </button>
-            </div>
-          </div>
+            <HiveSelector
+              hives={hives}
+              selectedHiveId={selectedHiveId}
+              onChange={setSelectedHiveId}
+              compact
+            />
+          </header>
 
-          {/* ── Chart ── */}
-          <div style={{ background: 'white', padding: '22px 22px 14px', boxShadow: 'var(--shadow-sm)', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Insulation Efficiency</div>
-                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>
-                  {range === '7D' ? 'Daily averages (°F)' : 'Raw readings (°F)'}
-                </div>
-              </div>
-              {/* ── Refresh controls ── */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <button
-                  onClick={() => setAutoRefresh(v => !v)}
-                  title={autoRefresh
-                    ? 'Auto-refresh ON (every 5 min) — click to disable'
-                    : 'Auto-refresh OFF — click to enable'}
-                  style={{
-                    padding: '5px 10px',
-                    border: '1px solid #e2e8f0',
-                    background: autoRefresh ? '#1e2d4a' : 'white',
-                    color: autoRefresh ? 'white' : '#94a3b8',
-                    fontSize: '11px', fontWeight: 700, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: '5px',
-                    transition: 'background 0.15s, color 0.15s',
-                  }}
-                >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                  </svg>
-                  Auto: {autoRefresh ? 'ON' : 'OFF'}
-                </button>
+          {authError ? (
+            <ErrorState message="Authentication required." />
+          ) : (
+            <>
+              {/* Query controls */}
+              <DashboardSection title="Query Window" eyebrow="Search">
+                <div className="analytics-card query-panel">
+                  <div className="query-mode-row">
+                    <button
+                      type="button"
+                      className={mode === 'preset' ? 'primary-btn' : 'ghost-btn'}
+                      onClick={() => {
+                        setMode('preset');
+                        setAppliedQuery(withQueryOptions({ range }, bucket, locationId));
+                        setQueryError('');
+                      }}
+                    >
+                      Presets
+                    </button>
+                    <button
+                      type="button"
+                      className={mode === 'custom' ? 'primary-btn' : 'ghost-btn'}
+                      onClick={() => setMode('custom')}
+                    >
+                      Custom Dates
+                    </button>
+                    <div className="range-context-pill">Active: {queryLabel}</div>
+                    <div className="range-context-pill">Bucket: {bucketContext}</div>
+                    <div className="range-context-pill">Location: {locationContext}</div>
+                  </div>
 
-                <button
-                  onClick={handleRefresh}
-                  disabled={dataLoading}
-                  title="Refresh chart"
-                  style={{
-                    padding: '5px 10px', border: '1px solid #e2e8f0',
-                    background: 'white', color: dataLoading ? '#94a3b8' : '#64748b',
-                    fontSize: '11px', fontWeight: 700, cursor: dataLoading ? 'not-allowed' : 'pointer',
-                    display: 'flex', alignItems: 'center', gap: '5px',
-                  }}
-                  onMouseEnter={e => { if (!dataLoading) e.currentTarget.style.background = '#f8fafc'; }}
-                  onMouseLeave={e => e.currentTarget.style.background = 'white'}
-                >
-                  <svg
-                    width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                    style={{ animation: dataLoading ? 'spin 1s linear infinite' : 'none' }}
-                  >
-                    <polyline points="23 4 23 10 17 10"/>
-                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                  </svg>
-                  Refresh
-                </button>
-              </div>
-            </div>
-            <div className="analytics-chart-wrap" style={{ height: '300px' }}>
-              {dataLoading || !chartData ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: '10px' }}>
-                  <span style={{ fontSize: '32px' }}>📈</span>
-                  <span style={{ color: '#94a3b8', fontSize: '13px' }}>
-                    {dataLoading ? 'Loading chart data…' : 'No readings available for the selected range.'}
-                  </span>
-                </div>
-              ) : (
-                <AnalyticsChart data={chartData} view={view} />
-              )}
-            </div>
-          </div>
-
-          {/* ── Daily Summaries ── */}
-          <div style={{ background: 'white', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
-            <div style={{ padding: '16px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Daily Summaries
-                <span style={{ marginLeft: '8px', fontSize: '11px', fontWeight: 500, color: '#94a3b8', textTransform: 'none', letterSpacing: 0 }}>
-                  {filteredSummaries.length} rows
-                </span>
-              </div>
-              <button
-                onClick={handleFilterCycle}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '6px',
-                  padding: '6px 12px',
-                  border: '1.5px solid #e2e8f0', background: currentFilter !== 'All' ? '#1e2d4a' : 'white',
-                  fontSize: '11px', fontWeight: 700,
-                  color: currentFilter !== 'All' ? 'white' : '#64748b',
-                  cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.04em',
-                }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
-                </svg>
-                {currentFilter}
-              </button>
-            </div>
-            <div className="table-scroll-wrapper">
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '400px' }}>
-                <thead>
-                  <tr style={{ background: '#fafbfc' }}>
-                    {[
-                      { label: 'DATE',     color: '#94a3b8' },
-                      { label: 'INT. AVG', color: '#f5a623' },
-                      { label: 'EXT. AVG', color: '#1e2d4a' },
-                      { label: 'DELTA',    color: '#22c55e' },
-                      { label: 'STATUS',   color: '#94a3b8' },
-                      { label: 'AVG RSSI', color: '#94a3b8' },
-                    ].map(h => (
-                      <th key={h.label} style={{
-                        padding: '10px 16px', textAlign: 'left',
-                        fontSize: '10px', fontWeight: 700, color: h.color,
-                        letterSpacing: '0.07em', textTransform: 'uppercase',
-                        borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap',
-                      }}>{h.label}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleSummaries.length === 0 ? (
-                    <tr>
-                      <td colSpan="6" style={{ padding: '40px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
-                        {dataLoading ? 'Loading summaries…' : 'No records found. Send readings from your sensor to see data here.'}
-                      </td>
-                    </tr>
-                  ) : (
-                    visibleSummaries.map((row, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid #f8fafc' }}
-                        onMouseEnter={e => e.currentTarget.style.background = '#fafbfc'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  <div className="query-controls">
+                    <label>
+                      <div className="field-label" style={{ marginBottom: '8px' }}>Location</div>
+                      <select
+                        className="dark-select"
+                        value={locationId}
+                        onChange={event => handleLocationChange(event.target.value)}
+                        disabled={locationsState.loading}
                       >
-                        <td style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 600, color: '#1e2d4a', whiteSpace: 'nowrap' }}>{row.date}</td>
-                        <td style={{ padding: '12px 16px', fontSize: '13px', color: '#f5a623', fontWeight: 700 }}>{row.intAvg}</td>
-                        <td style={{ padding: '12px 16px', fontSize: '13px', color: '#1e2d4a', fontWeight: 600 }}>{row.extAvg}</td>
-                        <td style={{ padding: '12px 16px', fontSize: '13px', color: '#22c55e', fontWeight: 700 }}>{row.diff}</td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <span style={{
-                            padding: '3px 10px', fontSize: '11px', fontWeight: 700,
-                            background: row.status === 'Normal' ? '#dcfce7' : '#fef3c7',
-                            color: row.status === 'Normal' ? '#16a34a' : '#d97706',
-                          }}>{row.status}</span>
-                        </td>
-                        <td style={{ padding: '12px 16px', fontSize: '13px', color: '#64748b' }}>{row.avgRssi}</td>
-                      </tr>
-                    ))
+                        <option value="">All locations</option>
+                        {locations.map(location => (
+                          <option key={location.id} value={location.id}>
+                            {locationDisplayName(location)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <div className="field-label" style={{ marginBottom: '8px' }}>Bucket Size</div>
+                      <select
+                        className="dark-select"
+                        value={bucket}
+                        onChange={event => handleBucketChange(event.target.value)}
+                      >
+                        {BUCKET_OPTIONS.map(option => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '13px', flex: '2 1 260px' }}>
+                      Source readings are stored in 10-minute ingest buckets. The backend validates bucket size against the active range.
+                    </div>
+                  </div>
+
+                  {mode === 'preset' ? (
+                    <div className="query-controls">
+                      <div>
+                        <div className="field-label" style={{ marginBottom: '8px' }}>Preset Range</div>
+                        <TimeRangeToggle range={range} onChange={handlePresetRange} disabled={status.loading} />
+                      </div>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                        Preset ranges run immediately and use backend-owned bucket sizes.
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="query-controls">
+                      <label>
+                        <div className="field-label" style={{ marginBottom: '8px' }}>Start</div>
+                        <input
+                          className="dark-input"
+                          type="datetime-local"
+                          value={startInput}
+                          onChange={event => setStartInput(event.target.value)}
+                        />
+                      </label>
+                      <label>
+                        <div className="field-label" style={{ marginBottom: '8px' }}>End</div>
+                        <input
+                          className="dark-input"
+                          type="datetime-local"
+                          value={endInput}
+                          onChange={event => setEndInput(event.target.value)}
+                        />
+                      </label>
+                      <button type="button" className="primary-btn query-apply-btn" onClick={applyCustomRange}>
+                        Apply Date Range
+                      </button>
+                    </div>
                   )}
-                </tbody>
-              </table>
-            </div>
-            <div style={{ padding: '14px', textAlign: 'center' }}>
-              {hasMore ? (
-                <button
-                  onClick={() => setVisibleCount(c => c + 5)}
-                  style={{
-                    padding: '8px 28px', border: '1.5px solid #e2e8f0',
-                    background: 'white', fontSize: '12px', fontWeight: 700,
-                    color: '#1e2d4a', cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em',
-                  }}
-                >
-                  Load More ({filteredSummaries.length - visibleCount} remaining)
-                </button>
+
+                  {queryError && (
+                    <div style={{ color: '#fca5a5', fontSize: '13px', marginTop: '12px', fontWeight: 700 }}>
+                      {queryError}
+                    </div>
+                  )}
+                  {locationsState.error && (
+                    <div style={{ color: '#fca5a5', fontSize: '13px', marginTop: '12px', fontWeight: 700 }}>
+                      {locationsState.error}
+                    </div>
+                  )}
+                  {showRefreshingResults && (
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '12px', fontWeight: 700 }}>
+                      Refreshing results while keeping your place
+                    </div>
+                  )}
+                </div>
+              </DashboardSection>
+
+              {status.loading && !hasStatusResults ? (
+                <LoadingState label="Loading analytics…" />
+              ) : status.error ? (
+                <ErrorState message={status.error} onRetry={status.refresh} />
+              ) : !hasStatusResults ? (
+                <EmptyState title="No hive data available" detail="This account does not have hives or readings to analyze yet." />
               ) : (
-                <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-                  {filteredSummaries.length === 0 ? 'No data to display' : `All ${filteredSummaries.length} rows shown`}
-                </span>
+                <>
+                  {/* Selected hive summary */}
+                  <DashboardSection
+                    title={selectedName}
+                    eyebrow="Selected Hive Summary"
+                    action={selectedHive && <StatusBadge status={selectedHive.healthStatus} />}
+                  >
+                    <div className="stat-grid">
+                      <StatCard label="Latest Temp" value={formatTemperature(summary.latestTemperature)} detail={formatDateTime(summary.latestReadingAt)} />
+                      <StatCard label="Average Temp" value={formatTemperature(summary.averageTemperature)} detail={`${formatCount(summary.readingCount)} readings`} />
+                      <StatCard label="Min Temp" value={formatTemperature(summary.minTemperature)} />
+                      <StatCard label="Max Temp" value={formatTemperature(summary.maxTemperature)} />
+                      <StatCard label="Temperature Swing" value={formatTemperature(summary.temperatureSwing)} />
+                      <StatCard label="Warning Alerts" value={formatCount(summary.warningCount)} tone="warning" />
+                      <StatCard label="Critical Alerts" value={formatCount(summary.criticalCount)} tone="critical" />
+                      <StatCard label="Bucket Size" value={selectedAnalytics.bucketSize || '—'} detail={queryLabel} tone="muted" />
+                    </div>
+                  </DashboardSection>
+
+                  {/* Temperature trend */}
+                  <DashboardSection title="Temperature Trend" eyebrow="Single Hive">
+                    <div className="analytics-card chart-card">
+                      {selectedAnalytics.error ? (
+                        <ErrorState message={selectedAnalytics.error} />
+                      ) : (
+                        <TemperatureChart
+                          series={selectedAnalytics.temperatureSeries}
+                          range={chartRange}
+                          bucketSize={selectedAnalytics.bucketSize}
+                          loading={selectedAnalytics.loading}
+                          height={380}
+                        />
+                      )}
+                    </div>
+                  </DashboardSection>
+
+                  {/* Multi-hive comparison */}
+                  <DashboardSection title={selectedLocation ? 'Location Comparison' : 'Comparison Graph'} eyebrow="Multi-Hive">
+                    <div className="analytics-card chart-card">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '14px', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '12px' }}>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                          {selectedLocation
+                            ? `Comparing hives in ${locationDisplayName(selectedLocation)} inside the active query window.`
+                            : 'Select hives to compare average temperature inside the active query window.'}
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                          {hives.map(hive => {
+                            const id = getHiveId(hive);
+                            const active = compareIds.includes(id);
+                            return (
+                              <button
+                                key={id}
+                                type="button"
+                                className={active ? 'primary-btn' : 'ghost-btn'}
+                                onClick={() => toggleCompareHive(id)}
+                              >
+                                {hive.name || `Hive ${id}`}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      {compareIds.length < 2 ? (
+                        <EmptyState title="Choose another hive" detail="Multi-hive comparison needs at least two selected hives." />
+                      ) : comparison.error ? (
+                        <ErrorState message={comparison.error} />
+                      ) : (
+                        <MultiHiveComparisonChart
+                          comparison={comparison.comparison}
+                          range={chartRange}
+                          loading={comparison.loading}
+                          height={400}
+                          showBucketRangeInTooltip={false}
+                        />
+                      )}
+                    </div>
+                  </DashboardSection>
+
+                  {/* CSV export */}
+                  <DashboardSection title="Export CSV" eyebrow="Download Data">
+                    <div className="analytics-card query-panel">
+                      <div style={{ display: 'grid', gap: '16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap' }}>
+                          <div>
+                            <div style={{ color: 'var(--text-primary)', fontSize: '15px', fontWeight: 850 }}>Download database data</div>
+                            <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
+                              Exports are scoped to the current beekeeper and include CSV-safe headers.
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="primary-btn"
+                            onClick={handleDownloadCsv}
+                            disabled={exportStatus.loading}
+                          >
+                            {exportStatus.loading ? 'Downloading…' : 'Download CSV'}
+                          </button>
+                        </div>
+
+                        <div className="query-controls">
+                          <label>
+                            <div className="field-label" style={{ marginBottom: '8px' }}>Scope</div>
+                            <select
+                              className="dark-select"
+                              value={exportScope}
+                              onChange={event => setExportScope(event.target.value)}
+                            >
+                              <option value="user">All hives</option>
+                              <option value="location">Selected location</option>
+                              <option value="hive">Selected hive</option>
+                            </select>
+                          </label>
+
+                          {exportScope === 'hive' && (
+                            <label>
+                              <div className="field-label" style={{ marginBottom: '8px' }}>Hive</div>
+                              <select
+                                className="dark-select"
+                                value={exportHiveId || selectedHiveId || ''}
+                                onChange={event => setExportHiveId(event.target.value)}
+                              >
+                                {hives.map(hive => {
+                                  const id = getHiveId(hive);
+                                  return (
+                                    <option key={id} value={id}>
+                                      {hive.name || `Hive ${id}`}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </label>
+                          )}
+
+                          {exportScope === 'location' && (
+                            <label>
+                              <div className="field-label" style={{ marginBottom: '8px' }}>Location</div>
+                              <select
+                                className="dark-select"
+                                value={exportLocationId || locationId || ''}
+                                onChange={event => setExportLocationId(event.target.value)}
+                              >
+                                <option value="">Choose location</option>
+                                {locations.map(location => (
+                                  <option key={location.id} value={location.id}>
+                                    {locationDisplayName(location)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
+
+                          <label>
+                            <div className="field-label" style={{ marginBottom: '8px' }}>Export Range</div>
+                            <select
+                              className="dark-select"
+                              value={exportRangeMode}
+                              onChange={event => setExportRangeMode(event.target.value)}
+                            >
+                              <option value="active">Active query window</option>
+                              <option value="1d">Last 1 day</option>
+                              <option value="3d">Last 3 days</option>
+                              <option value="7d">Last 7 days</option>
+                              <option value="1m">Last 1 month</option>
+                              <option value="custom">Custom dates</option>
+                              <option value="all">All data</option>
+                            </select>
+                          </label>
+                        </div>
+
+                        {exportRangeMode === 'custom' && (
+                          <div className="query-controls">
+                            <label>
+                              <div className="field-label" style={{ marginBottom: '8px' }}>Export Start</div>
+                              <input
+                                className="dark-input"
+                                type="datetime-local"
+                                value={exportStartInput}
+                                onChange={event => setExportStartInput(event.target.value)}
+                              />
+                            </label>
+                            <label>
+                              <div className="field-label" style={{ marginBottom: '8px' }}>Export End</div>
+                              <input
+                                className="dark-input"
+                                type="datetime-local"
+                                value={exportEndInput}
+                                onChange={event => setExportEndInput(event.target.value)}
+                              />
+                            </label>
+                          </div>
+                        )}
+
+                        <div>
+                          <div className="field-label" style={{ marginBottom: '8px' }}>Included Data</div>
+                          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                            {EXPORT_INCLUDE_OPTIONS.map(option => (
+                              <label
+                                key={option.key}
+                                className="ghost-btn"
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={exportIncludes[option.key]}
+                                  onChange={() => handleExportIncludeChange(option.key)}
+                                  style={{ accentColor: 'var(--amber)' }}
+                                />
+                                {option.label}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                          This download will include {EXPORT_INCLUDE_OPTIONS.filter(option => exportIncludes[option.key]).map(option => option.label.toLowerCase()).join(', ') || 'no datasets selected'} for {exportScope === 'user' ? 'all owned hives' : exportScope === 'hive' ? 'the selected hive' : 'the selected location'}.
+                          {exportRangeMode === 'all' ? ' All matching historical rows will be exported.' : ` Range: ${exportRangeMode === 'active' ? queryLabel : exportRangeMode === 'custom' ? 'custom export dates' : describeQuery({ range: exportRangeMode })}.`}
+                        </div>
+
+                        {exportStatus.error && (
+                          <div style={{ color: '#fca5a5', fontSize: '13px', fontWeight: 700 }}>
+                            {exportStatus.error}
+                          </div>
+                        )}
+                        {exportStatus.success && (
+                          <div style={{ color: 'var(--success)', fontSize: '13px', fontWeight: 800 }}>
+                            {exportStatus.success}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </DashboardSection>
+
+                  {/* Hive metrics */}
+                  <DashboardSection title="Hive Metrics" eyebrow="Query Summary">
+                    <div className="analytics-card" style={{ overflowX: 'auto' }}>
+                      <table className="metrics-table">
+                        <thead>
+                          <tr>
+                            <th>Hive</th>
+                            <th>Health</th>
+                            <th>Latest</th>
+                            <th>Average</th>
+                            <th>Min</th>
+                            <th>Max</th>
+                            <th>Temperature Swing</th>
+                            <th>Readings</th>
+                            <th>Warnings</th>
+                            <th>Critical</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {hives.map(hive => {
+                            const id = getHiveId(hive);
+                            return (
+                              <tr key={id}>
+                                <td style={{ color: 'var(--text-primary)', fontWeight: 850 }}>
+                                  {hive.name || `Hive ${id}`}
+                                </td>
+                                <td><StatusBadge status={hive.healthStatus} /></td>
+                                <td>{formatTemperature(hive.latestTemperature)}</td>
+                                <td>{formatTemperature(hive.averageTemperature)}</td>
+                                <td>{formatTemperature(hive.minTemperature)}</td>
+                                <td>{formatTemperature(hive.maxTemperature)}</td>
+                                <td>{formatMetric(hive.temperatureSwing)}°F</td>
+                                <td>{formatCount(hive.readingCount)}</td>
+                                <td style={{ color: hive.warningCount > 0 ? 'var(--warning)' : 'var(--text-muted)', fontWeight: 800 }}>
+                                  {formatCount(hive.warningCount)}
+                                </td>
+                                <td style={{ color: hive.criticalCount > 0 ? 'var(--error)' : 'var(--text-muted)', fontWeight: 800 }}>
+                                  {formatCount(hive.criticalCount)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </DashboardSection>
+                </>
               )}
-            </div>
-          </div>
+            </>
+          )}
         </div>
       </main>
     </div>

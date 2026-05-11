@@ -5,6 +5,9 @@ const router = express.Router();
 
 const { requireAuth } = require("../middleware/requireAuth.js");
 const { requireCsrf } = require("../middleware/requireCsrf.js");
+const {
+  requireWritableAccount,
+} = require("../middleware/requireWritableAccount.js");
 const authController = require("../controllers/auth.controller.js");
 
 /**
@@ -57,6 +60,7 @@ router.patch(
   "/change-password",
   requireAuth,
   requireCsrf,
+  requireWritableAccount,
   authController.changePassword,
 );
 
@@ -68,6 +72,7 @@ router.patch(
   "/alert-settings",
   requireAuth,
   requireCsrf,
+  requireWritableAccount,
   authController.updateBeekeeperAlertSettings,
 );
 
@@ -75,6 +80,12 @@ router.patch(
  * DELETE /api/auth/me
  * Deletes the authenticated user and all sessions (Auth + CSRF)
  */
-router.delete("/me", requireAuth, requireCsrf, authController.deleteUser);
+router.delete(
+  "/me",
+  requireAuth,
+  requireCsrf,
+  requireWritableAccount,
+  authController.deleteUser,
+);
 
 module.exports = router;

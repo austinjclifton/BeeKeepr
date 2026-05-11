@@ -2,6 +2,12 @@
 const alertsRepo = require("../db/alerts.db.js");
 const devicesRepo = require("../db/devices.db.js");
 const resendClient = require("../utils/resendClient.js");
+const { classifyTemperature } = require("../utils/alertClassification.js");
+
+const ALERT_EMAIL_FROM =
+  process.env.ALERT_EMAIL_FROM || process.env.EMAIL_FROM || "alerts@beekeepr.example";
+const APP_BASE_URL =
+  process.env.APP_BASE_URL || process.env.FRONTEND_URL || "http://localhost:5173";
 
 /**
  * Main entry point from ingest to check if a reading is alert-worthy
@@ -38,7 +44,7 @@ exports.processReading = async (reading) => {
     return;
   }
 
-  const classification = classify(reading.temperature, ctx);
+  const classification = classifyTemperature(reading.temperature, ctx);
   if (!classification) return;
   console.log("NEW READING CLASSIFICATION:", classification);
 
@@ -100,54 +106,14 @@ exports.resolveAlert = async ({ beekeeperId, alertId }) => {
 
   if (!alert) throw notFound("Alert not found");
 
-  if (alert.severity !== "critical") {
-    throw badRequest("Only critical alerts can be resolved");
+  if (alert.severity !== "warning") {
+    throw badRequest("Only warning alerts can be manually resolved");
   }
 
   if (alert.resolved) return alert;
 
   return alertsRepo.markResolved({ alertId });
 };
-
-/* ========================================================================== */
-/* Classification                                                             */
-/* ========================================================================== */
-
-function classify(temp, ctx) {
-  if (temp <= ctx.critical_low_threshold) {
-    return {
-      severity: "critical",
-      direction: "low",
-      threshold: ctx.critical_low_threshold,
-    };
-  }
-
-  if (temp >= ctx.critical_high_threshold) {
-    return {
-      severity: "critical",
-      direction: "high",
-      threshold: ctx.critical_high_threshold,
-    };
-  }
-
-  if (temp <= ctx.warning_low_threshold) {
-    return {
-      severity: "warning",
-      direction: "low",
-      threshold: ctx.warning_low_threshold,
-    };
-  }
-
-  if (temp >= ctx.warning_high_threshold) {
-    return {
-      severity: "warning",
-      direction: "high",
-      threshold: ctx.warning_high_threshold,
-    };
-  }
-
-  return null;
-}
 
 /* ========================================================================== */
 /* Email handling                                                             */
@@ -186,8 +152,8 @@ async function handleCriticalEmail({
 
     const result = await resendClient.emails.send({
       to: email,
-      from: "alerts@asheville.pokergame.studio",
-      subject: `CRITICAL Hive Alert For Hive ${hiveId}`,
+      from: ALERT_EMAIL_FROM,
+      subject: `Critical BeeKeepr Alert for Hive ${hiveId}`,
       text: buildEmailText({
         hiveId,
         temperature,
@@ -227,7 +193,7 @@ function buildEmailText({ hiveId, temperature, threshold, direction }) {
   and your current critical threshold (${direction}) is ${threshold}º
 
   Please check your dashboard immediately.
-  https://asheville.webdev.gccis.rit.edu/login
+  ${APP_BASE_URL.replace(/\/+$/, "")}/login
   `;
 }
 

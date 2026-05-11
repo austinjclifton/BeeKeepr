@@ -50,7 +50,7 @@ exports.register = async (req, res, next) => {
 
     const username = asTrimmedString(body.username);
     const email = asTrimmedString(body.email);
-    const password = asTrimmedString(body.password);
+    const password = asRequiredString(body.password);
 
     if (!username || !email || !password) {
       throw badRequest("username, email, and password are required");
@@ -82,8 +82,9 @@ exports.login = async (req, res, next) => {
   try {
     const body = safeBody(req);
 
-    const identifier = asTrimmedString(body.identifier);
-    const password = asTrimmedString(body.password);
+    const identifier =
+      asTrimmedString(body.identifier) ?? asTrimmedString(body.email);
+    const password = asRequiredString(body.password);
 
     if (!identifier || !password) {
       throw badRequest("identifier and password are required");
@@ -155,7 +156,7 @@ exports.confirmPasswordReset = async (req, res, next) => {
     const body = safeBody(req);
 
     const token = asTrimmedString(body.token);
-    const newPassword = asTrimmedString(body.newPassword);
+    const newPassword = asRequiredString(body.newPassword);
 
     if (!token || !newPassword) {
       throw badRequest("token and newPassword are required");
@@ -170,12 +171,12 @@ exports.confirmPasswordReset = async (req, res, next) => {
     }
 
     await authService.resetPassword({
-      userId: Number(verification.userId),
+      beekeeperId: Number(verification.beekeeperId),
       newPassword,
     });
 
-    await passwordResetService.consumeResetTokenForUser({
-      userId: verification.userId,
+    await passwordResetService.consumeResetTokenForBeekeeper({
+      beekeeperId: verification.beekeeperId,
     });
 
     return res.status(200).json({ success: true });
@@ -196,8 +197,8 @@ exports.changePassword = async (req, res, next) => {
   try {
     const body = safeBody(req);
 
-    const currentPassword = asTrimmedString(body.currentPassword);
-    const newPassword = asTrimmedString(body.newPassword);
+    const currentPassword = asRequiredString(body.currentPassword);
+    const newPassword = asRequiredString(body.newPassword);
 
     if (!currentPassword || !newPassword) {
       throw badRequest("currentPassword and newPassword are required");
@@ -256,6 +257,7 @@ exports.updateBeekeeperAlertSettings = async (req, res, next) => {
         critical_low_threshold: alertSettings.criticalLow,
         critical_high_threshold: alertSettings.criticalHigh,
         updated_at: alertSettings.updatedAt,
+        propagated_hive_count: alertSettings.propagatedHiveCount,
       },
     });
   } catch (err) {
@@ -319,6 +321,11 @@ function asTrimmedString(value) {
   if (typeof value !== "string") return null;
   const t = value.trim();
   return t.length ? t : null;
+}
+
+function asRequiredString(value) {
+  if (typeof value !== "string" || value.length === 0) return null;
+  return value;
 }
 
 function badRequest(message) {

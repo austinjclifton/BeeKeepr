@@ -143,6 +143,11 @@ function mapUserRow(row) {
     id: Number(row.id),
     username: row.username,
     email: row.email,
+    alerts_enabled: row.alerts_enabled,
+    warning_low_threshold: row.warning_low_threshold,
+    warning_high_threshold: row.warning_high_threshold,
+    critical_low_threshold: row.critical_low_threshold,
+    critical_high_threshold: row.critical_high_threshold,
   };
 }
 

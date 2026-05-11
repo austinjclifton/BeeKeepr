@@ -19,8 +19,10 @@ CREATE TABLE beekeeper (
   critical_high_threshold DOUBLE PRECISION,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
   CONSTRAINT uq_beekeeper_username UNIQUE (username),
   CONSTRAINT uq_beekeeper_email UNIQUE (email),
+
   CONSTRAINT chk_beekeeper_alert_thresholds
     CHECK (
       (
@@ -51,6 +53,7 @@ CREATE TABLE location (
   lon_e6 INTEGER GENERATED ALWAYS AS (round(lon * 1000000)::int) STORED,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
   CONSTRAINT uq_location_lat_lon_e6 UNIQUE (lat_e6, lon_e6)
 );
 
@@ -60,20 +63,65 @@ CREATE TABLE hive (
   location_id BIGINT,
   name VARCHAR(100) NOT NULL,
   notes TEXT,
+
+  status VARCHAR(24) NOT NULL DEFAULT 'active',
+  installed_at TIMESTAMPTZ,
+  archived_at TIMESTAMPTZ,
+
+  warning_low_threshold DOUBLE PRECISION,
+  warning_high_threshold DOUBLE PRECISION,
+  critical_low_threshold DOUBLE PRECISION,
+  critical_high_threshold DOUBLE PRECISION,
+
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
   CONSTRAINT fk_hive_beekeeper
     FOREIGN KEY (beekeeper_id)
     REFERENCES beekeeper (id)
     ON DELETE CASCADE,
+
   CONSTRAINT fk_hive_location
     FOREIGN KEY (location_id)
     REFERENCES location (id)
-    ON DELETE RESTRICT
+    ON DELETE RESTRICT,
+
+  CONSTRAINT chk_hive_status
+    CHECK (status IN ('active', 'inactive', 'archived')),
+
+  CONSTRAINT chk_hive_archived_at
+    CHECK (
+      (status = 'archived' AND archived_at IS NOT NULL)
+      OR
+      (status <> 'archived' AND archived_at IS NULL)
+    ),
+
+  CONSTRAINT chk_hive_alert_thresholds
+    CHECK (
+      (
+        warning_low_threshold IS NULL
+        AND warning_high_threshold IS NULL
+        AND critical_low_threshold IS NULL
+        AND critical_high_threshold IS NULL
+      )
+      OR
+      (
+        warning_low_threshold IS NOT NULL
+        AND warning_high_threshold IS NOT NULL
+        AND critical_low_threshold IS NOT NULL
+        AND critical_high_threshold IS NOT NULL
+        AND critical_low_threshold < warning_low_threshold
+        AND warning_low_threshold < warning_high_threshold
+        AND warning_high_threshold < critical_high_threshold
+      )
+    )
 );
 
 CREATE INDEX idx_hive_beekeeper_id
   ON hive (beekeeper_id);
+
+CREATE INDEX idx_hive_beekeeper_status
+  ON hive (beekeeper_id, status);
 
 CREATE INDEX idx_hive_location_id
   ON hive (location_id);
@@ -85,10 +133,12 @@ CREATE TABLE device (
   last_seen_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
   CONSTRAINT fk_device_hive
     FOREIGN KEY (hive_id)
     REFERENCES hive (id)
     ON DELETE CASCADE,
+
   CONSTRAINT uq_device_hive_id UNIQUE (hive_id)
 );
 
@@ -103,19 +153,26 @@ CREATE TABLE reading (
   temperature DOUBLE PRECISION NOT NULL,
   rssi SMALLINT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
   CONSTRAINT fk_reading_device
     FOREIGN KEY (device_id)
     REFERENCES device (id)
     ON DELETE CASCADE,
+
   CONSTRAINT uq_reading_device_bucket_at UNIQUE (device_id, bucket_at),
+
   CONSTRAINT chk_reading_temperature
     CHECK (temperature > -100 AND temperature < 999),
+
   CONSTRAINT chk_reading_rssi_dbm
     CHECK (rssi IS NULL OR (rssi >= -200 AND rssi <= 0))
 );
 
 CREATE INDEX idx_reading_device_bucket_at_desc
   ON reading (device_id, bucket_at DESC);
+
+CREATE INDEX idx_reading_bucket_at_device_id_desc
+  ON reading (bucket_at DESC, device_id);
 
 CREATE INDEX idx_reading_bucket_at_brin
   ON reading USING brin (bucket_at);
@@ -137,33 +194,42 @@ CREATE TABLE alert (
   resolved_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
   CONSTRAINT fk_alert_reading
     FOREIGN KEY (reading_id)
     REFERENCES reading (id)
     ON DELETE CASCADE,
+
   CONSTRAINT fk_alert_beekeeper
     FOREIGN KEY (beekeeper_id)
     REFERENCES beekeeper (id)
     ON DELETE CASCADE,
+
   CONSTRAINT fk_alert_hive
     FOREIGN KEY (hive_id)
     REFERENCES hive (id)
     ON DELETE CASCADE,
+
   CONSTRAINT fk_alert_device
     FOREIGN KEY (device_id)
     REFERENCES device (id)
     ON DELETE CASCADE,
+
   CONSTRAINT uq_alert_reading_id UNIQUE (reading_id),
+
   CONSTRAINT chk_alert_severity
     CHECK (severity IN ('warning', 'critical')),
+
   CONSTRAINT chk_alert_direction
     CHECK (direction IN ('low', 'high')),
+
   CONSTRAINT chk_alert_email_sent_at
     CHECK (
       (email_sent = FALSE AND email_sent_at IS NULL)
       OR
       (email_sent = TRUE AND email_sent_at IS NOT NULL)
     ),
+
   CONSTRAINT chk_alert_resolved_at
     CHECK (
       (resolved = FALSE AND resolved_at IS NULL)
@@ -177,6 +243,12 @@ CREATE INDEX idx_alert_beekeeper_resolved_created_at_desc
 
 CREATE INDEX idx_alert_hive_resolved_created_at_desc
   ON alert (hive_id, resolved, created_at DESC);
+
+CREATE INDEX idx_alert_beekeeper_created_at_desc
+  ON alert (beekeeper_id, created_at DESC);
+
+CREATE INDEX idx_alert_hive_created_at_desc
+  ON alert (hive_id, created_at DESC);
 
 CREATE INDEX idx_alert_device_created_at_desc
   ON alert (device_id, created_at DESC);
@@ -205,28 +277,39 @@ CREATE TABLE external_condition (
   raw_json JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
   CONSTRAINT fk_external_condition_location
     FOREIGN KEY (location_id)
     REFERENCES location (id)
     ON DELETE CASCADE,
+
   CONSTRAINT uq_external_condition_location_bucket_at UNIQUE (location_id, bucket_at),
+
   CONSTRAINT chk_external_condition_status
     CHECK (status IN ('pending', 'success', 'failed')),
+
   CONSTRAINT chk_external_condition_fetched_at
     CHECK (
       (status = 'pending' AND fetched_at IS NULL)
-      OR (status IN ('success', 'failed') AND fetched_at IS NOT NULL)
+      OR
+      (status IN ('success', 'failed') AND fetched_at IS NOT NULL)
     ),
+
   CONSTRAINT chk_external_condition_humidity
     CHECK (humidity_pct IS NULL OR (humidity_pct >= 0 AND humidity_pct <= 100)),
+
   CONSTRAINT chk_external_condition_wind
     CHECK (wind_mps IS NULL OR wind_mps >= 0),
+
   CONSTRAINT chk_external_condition_wind_gust
     CHECK (wind_gust_mps IS NULL OR wind_gust_mps >= 0),
+
   CONSTRAINT chk_external_condition_precip
     CHECK (precip_mm IS NULL OR precip_mm >= 0),
+
   CONSTRAINT chk_external_condition_cloud
     CHECK (cloud_pct IS NULL OR (cloud_pct >= 0 AND cloud_pct <= 100)),
+
   CONSTRAINT chk_external_condition_pressure
     CHECK (pressure_hpa IS NULL OR pressure_hpa > 0)
 );
@@ -246,12 +329,15 @@ CREATE TABLE session (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   expires_at TIMESTAMPTZ NOT NULL,
   last_activity_at TIMESTAMPTZ,
+
   CONSTRAINT uq_session_session_token UNIQUE (session_token),
   CONSTRAINT uq_session_csrf_token UNIQUE (csrf_token),
+
   CONSTRAINT fk_session_beekeeper
     FOREIGN KEY (beekeeper_id)
     REFERENCES beekeeper (id)
     ON DELETE CASCADE,
+
   CONSTRAINT chk_session_expires
     CHECK (expires_at > created_at)
 );
@@ -271,7 +357,10 @@ CREATE TABLE password_reset_token (
   token_hash TEXT NOT NULL,
   expires_at TIMESTAMPTZ NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  consumed_at TIMESTAMPTZ
+  consumed_at TIMESTAMPTZ,
+
+  CONSTRAINT chk_password_reset_token_consumed_at
+    CHECK (consumed_at IS NULL OR consumed_at >= created_at)
 );
 
 CREATE INDEX idx_password_reset_token_expires_at

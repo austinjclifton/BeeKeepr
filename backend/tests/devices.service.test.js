@@ -40,7 +40,7 @@ function baseDeviceRepo() {
   return {
     createScoped: async () => ({ id: 1 }),
     listDevicesByBeekeeper: async () => [],
-    listByHiveScoped: async () => [],
+    listDevicesByHiveScoped: async () => [],
     findByIdScoped: async () => null,
     updateScoped: async () => ({ id: 1 }),
     touchLastSeenScoped: async () => ({ id: 1 }),
@@ -81,7 +81,7 @@ test("createDevice returns null when hive does not exist", async () => {
 
 test("createDevice maps PG unique violation to 409 conflict", async () => {
   const deviceRepo = baseDeviceRepo();
-  deviceRepo.listByHiveScoped = async () => [];
+  deviceRepo.listDevicesByHiveScoped = async () => [];
   deviceRepo.createScoped = async () => {
     const err = new Error("duplicate");
     err.code = "23505";

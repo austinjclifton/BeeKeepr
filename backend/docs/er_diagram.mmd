@@ -54,6 +54,13 @@ erDiagram
     BIGINT location_id FK
     VARCHAR(100) name
     TEXT notes
+    VARCHAR(24) status
+    TIMESTAMPTZ installed_at
+    TIMESTAMPTZ archived_at
+    DOUBLE_PRECISION warning_low_threshold
+    DOUBLE_PRECISION warning_high_threshold
+    DOUBLE_PRECISION critical_low_threshold
+    DOUBLE_PRECISION critical_high_threshold
     TIMESTAMPTZ created_at
     TIMESTAMPTZ updated_at
   }

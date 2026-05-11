@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
+import { apiUrl } from "../api";
  
 function HealthCheck() {
   const [status, setStatus] = useState(null);
  
   useEffect(() => {
-    fetch("/api/health")
+    fetch(apiUrl("/api/health"))
       .then((res) => res.json())
       .then((data) => setStatus(data))
       .catch(() => setStatus({ status: 'error', service: "Backend not connected" }));
@@ -22,7 +23,8 @@ function HealthCheck() {
       fontFamily: "'DM Sans', system-ui, sans-serif",
     }}>
       <div style={{
-        background: 'white',
+        background: 'var(--surface-elevated)',
+        border: '1px solid var(--border)',
         borderRadius: '16px',
         padding: '40px',
         boxShadow: 'var(--shadow-md)',
@@ -42,7 +44,7 @@ function HealthCheck() {
             </svg>
           </div>
           <div>
-            <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--navy)' }}>Asheville</div>
+            <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)' }}>BeeKeepr</div>
             <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>System Health Check</div>
           </div>
         </div>

@@ -176,11 +176,42 @@ test("resolveAlert rejects missing alert", async () => {
   );
 });
 
-test("resolveAlert resolves only critical alerts", async () => {
+test("resolveAlert resolves warning alerts", async () => {
   const repo = baseAlertsRepo();
   repo.findByIdScoped = async () => ({
     id: 2,
     severity: "warning",
+    resolved: false,
+  });
+  let resolvedAlertId = null;
+  repo.markResolved = async ({ alertId }) => {
+    resolvedAlertId = alertId;
+    return {
+      id: alertId,
+      severity: "warning",
+      resolved: true,
+      resolved_at: "2026-05-10T12:00:00.000Z",
+    };
+  };
+
+  const svc = buildService({
+    alertsRepoStubs: repo,
+    devicesRepoStubs: baseDevicesRepo(),
+    resendSendImpl: async () => {},
+  });
+
+  const result = await svc.resolveAlert({ beekeeperId: 1, alertId: 2 });
+
+  assert.equal(resolvedAlertId, 2);
+  assert.equal(result.resolved, true);
+  assert.equal(result.resolved_at, "2026-05-10T12:00:00.000Z");
+});
+
+test("resolveAlert rejects critical alerts", async () => {
+  const repo = baseAlertsRepo();
+  repo.findByIdScoped = async () => ({
+    id: 3,
+    severity: "critical",
     resolved: false,
   });
 
@@ -191,9 +222,9 @@ test("resolveAlert resolves only critical alerts", async () => {
   });
 
   await assert.rejects(
-    () => svc.resolveAlert({ beekeeperId: 1, alertId: 2 }),
+    () => svc.resolveAlert({ beekeeperId: 1, alertId: 3 }),
     (err) =>
       err.status === 400 &&
-      err.message === "Only critical alerts can be resolved",
+      err.message === "Only warning alerts can be manually resolved",
   );
 });

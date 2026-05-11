@@ -1,12 +1,22 @@
 import { useState, useEffect } from 'react';
-import { apiFetch, setCsrfToken } from '../api';
+import {
+  apiFetch,
+  getCsrfToken,
+  getCurrentUser,
+  setCsrfToken,
+  setCurrentUser,
+} from '../api';
 
 export function useAuth() {
-  const [ready, setReady] = useState(false);
-  const [user, setUser] = useState(null);
+  const cachedUser = getCurrentUser();
+  const hasCachedAuth = Boolean(cachedUser && getCsrfToken());
+  const [ready, setReady] = useState(hasCachedAuth);
+  const [user, setUser] = useState(cachedUser ?? null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    if (hasCachedAuth) return undefined;
+
     let cancelled = false;
     async function init() {
       try {
@@ -16,6 +26,7 @@ export function useAuth() {
         ]);
         if (cancelled) return;
         setCsrfToken(csrfRes.csrfToken);
+        setCurrentUser(meRes.user);
         setUser(meRes.user);
       } catch {
         if (cancelled) return;
@@ -26,7 +37,7 @@ export function useAuth() {
     }
     init();
     return () => { cancelled = true; };
-  }, []);
+  }, [hasCachedAuth]);
 
   return { ready, user, error };
 }

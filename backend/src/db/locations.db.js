@@ -72,6 +72,27 @@ exports.listLocations = async ({ limit, order }) => {
 };
 
 /**
+ * List locations that contain owned hives
+ */
+exports.listOwnedByBeekeeper = async ({ beekeeperId }) => {
+  return query(
+    `
+    SELECT DISTINCT
+      l.id,
+      l.name,
+      l.lat,
+      l.lon
+    FROM hive h
+    JOIN location l
+      ON l.id = h.location_id
+    WHERE h.beekeeper_id = $1
+    ORDER BY l.name ASC NULLS LAST, l.id ASC
+    `,
+    [beekeeperId],
+  );
+};
+
+/**
  * Create a location if it doesn't exist, otherwise return the existing row
  */
 exports.createOrGetLocation = async ({ name, lat, lon, latE6, lonE6 }) => {

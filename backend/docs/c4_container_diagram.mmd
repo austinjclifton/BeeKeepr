@@ -75,7 +75,7 @@ flowchart TB
 
   WEB -->|"HTTPS REST API (JSON) Cookie session + CSRF on mutations"| API
   API -->|"Parameterized SQL Prepared statements + indexed queries"| PG
-  DEV -->|"POST /api/ingest/readings Header auth: Ingest Token"| API
+  DEV -->|"POST /ingest/readings Header auth: Ingest Token"| API
 
   classDef person fill:#ffffff,stroke:#111827,stroke-width:2px,color:#111827;
   classDef client fill:#eff6ff,stroke:#93c5fd,stroke-width:2px,color:#0f172a;

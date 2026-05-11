@@ -21,6 +21,10 @@ const devicesControllerPath = path.join(
   backendRoot,
   "src/controllers/devices.controller.js",
 );
+const analyticsControllerPath = path.join(
+  backendRoot,
+  "src/controllers/analytics.controller.js",
+);
 
 const locationsRoutesPath = path.join(
   backendRoot,
@@ -75,6 +79,7 @@ function buildHivesApp(stubs) {
     hivesControllerPath,
     hivesServicePath,
     devicesControllerPath,
+    analyticsControllerPath,
     requireAuthPath,
     requireCsrfPath,
   ]);
@@ -104,6 +109,24 @@ function buildHivesApp(stubs) {
     },
   };
 
+  require.cache[analyticsControllerPath] = {
+    id: analyticsControllerPath,
+    filename: analyticsControllerPath,
+    loaded: true,
+    exports: {
+      hivesStatus: (req, res) => res.status(501).json({ error: "not used" }),
+      hiveReadingsSince: (req, res) =>
+        res.status(501).json({ error: "not used" }),
+      latestHiveReading: (req, res) =>
+        res.status(501).json({ error: "not used" }),
+      dashboardHiveTemperature24h: (req, res) =>
+        res.status(501).json({ error: "not used" }),
+      hiveSummary: (req, res) => res.status(501).json({ error: "not used" }),
+      hiveTemperature: (req, res) =>
+        res.status(501).json({ error: "not used" }),
+    },
+  };
+
   const routes = require(hivesRoutesPath);
   const app = express();
   app.use(express.json());
@@ -122,6 +145,7 @@ function buildLocationsApp(stubs) {
     locationsControllerPath,
     locationsServicePath,
     requireAuthPath,
+    requireCsrfPath,
   ]);
 
   require.cache[requireAuthPath] = {
@@ -133,6 +157,18 @@ function buildLocationsApp(stubs) {
         req.user = { id: 101 };
         req.session = { csrfToken: "csrf-101" };
         next();
+      },
+    },
+  };
+
+  require.cache[requireCsrfPath] = {
+    id: requireCsrfPath,
+    filename: requireCsrfPath,
+    loaded: true,
+    exports: {
+      requireCsrf: (req, res, next) => {
+        if (req.get("x-csrf-token") === req.session?.csrfToken) return next();
+        return res.status(403).json({ error: "Invalid CSRF token" });
       },
     },
   };
@@ -262,6 +298,7 @@ test("POST /api/locations returns 400 when lat is missing", async () => {
 
   const res = await request(app)
     .post("/api/locations")
+    .set("x-csrf-token", "csrf-101")
     .send({ lon: -82.5, name: "AVL" })
     .expect(400);
 
@@ -280,5 +317,8 @@ test("DELETE /api/locations/:locationId returns 204 when removed", async () => {
   stubs.remove = async () => true;
 
   const app = buildLocationsApp(stubs);
-  await request(app).delete("/api/locations/1234").expect(204);
+  await request(app)
+    .delete("/api/locations/1234")
+    .set("x-csrf-token", "csrf-101")
+    .expect(204);
 });

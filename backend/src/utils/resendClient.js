@@ -3,11 +3,27 @@
 const { Resend } = require("resend");
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
+let resend = null;
 
-if (!RESEND_API_KEY) {
-  throw new Error("RESEND_API_KEY is not set");
+function getClient() {
+  if (!RESEND_API_KEY) return null;
+  if (!resend) resend = new Resend(RESEND_API_KEY);
+  return resend;
 }
 
-const resend = new Resend(RESEND_API_KEY);
+module.exports = {
+  emails: {
+    send: async (payload) => {
+      const client = getClient();
+      if (!client) {
+        return {
+          error: {
+            message: "RESEND_API_KEY is not configured",
+          },
+        };
+      }
 
-module.exports = resend;
+      return client.emails.send(payload);
+    },
+  },
+};

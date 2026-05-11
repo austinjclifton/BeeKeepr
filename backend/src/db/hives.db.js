@@ -4,14 +4,50 @@ const { query } = require("./pool");
 /**
  * Create a new hive record
  */
-exports.create = async ({ beekeeperId, name, notes, locationId }) => {
+exports.create = async ({
+  beekeeperId,
+  name,
+  notes,
+  locationId,
+  status,
+  installedAt,
+  archivedAt,
+  warningLowThreshold,
+  warningHighThreshold,
+  criticalLowThreshold,
+  criticalHighThreshold,
+}) => {
   const rows = await query(
     `
-    INSERT INTO hive (beekeeper_id, name, notes, location_id)
-    VALUES ($1, $2, $3, $4)
+    INSERT INTO hive (
+      beekeeper_id,
+      name,
+      notes,
+      location_id,
+      status,
+      installed_at,
+      archived_at,
+      warning_low_threshold,
+      warning_high_threshold,
+      critical_low_threshold,
+      critical_high_threshold
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     RETURNING *
     `,
-    [beekeeperId, name, notes ?? null, locationId ?? null],
+    [
+      beekeeperId,
+      name,
+      notes ?? null,
+      locationId ?? null,
+      status,
+      installedAt,
+      archivedAt,
+      warningLowThreshold,
+      warningHighThreshold,
+      criticalLowThreshold,
+      criticalHighThreshold,
+    ],
   );
 
   return rows[0] ?? null;
@@ -87,6 +123,50 @@ exports.getLocationIdForHive = async ({ beekeeperId, hiveId }) => {
 };
 
 /**
+ * Find scoped hives by ids, preserving requested order
+ */
+exports.findByIdsScoped = async ({ beekeeperId, hiveIds, locationId = null }) => {
+  return query(
+    `
+    SELECT id, name, location_id
+    FROM hive
+    WHERE beekeeper_id = $1
+      AND id = ANY($2::bigint[])
+      AND ($3::bigint IS NULL OR location_id = $3)
+    ORDER BY array_position($2::bigint[], id)
+    `,
+    [beekeeperId, hiveIds, locationId],
+  );
+};
+
+/**
+ * List active owned hives for analytics scope selection
+ */
+exports.listOwnedForScope = async ({ beekeeperId, locationId = null, limit = 10 }) => {
+  return query(
+    `
+    SELECT
+      h.id,
+      h.name,
+      h.location_id,
+      MAX(r.bucket_at) AS latest_reading_at
+    FROM hive h
+    LEFT JOIN device d
+      ON d.hive_id = h.id
+    LEFT JOIN reading r
+      ON r.device_id = d.id
+    WHERE h.beekeeper_id = $1
+      AND h.status = 'active'
+      AND ($2::bigint IS NULL OR h.location_id = $2)
+    GROUP BY h.id, h.name, h.location_id
+    ORDER BY latest_reading_at DESC NULLS LAST, h.name ASC, h.id ASC
+    LIMIT $3
+    `,
+    [beekeeperId, locationId, limit],
+  );
+};
+
+/**
  * Update a hive's data (scoped)
  */
 exports.updateScoped = async ({
@@ -95,6 +175,13 @@ exports.updateScoped = async ({
   name,
   notes,
   locationId,
+  status,
+  installedAt,
+  archivedAt,
+  warningLowThreshold,
+  warningHighThreshold,
+  criticalLowThreshold,
+  criticalHighThreshold,
 }) => {
   const set = [];
   const values = [];
@@ -113,6 +200,41 @@ exports.updateScoped = async ({
   if (locationId !== undefined) {
     set.push(`location_id = $${i++}`);
     values.push(locationId);
+  }
+
+  if (status !== undefined) {
+    set.push(`status = $${i++}`);
+    values.push(status);
+  }
+
+  if (installedAt !== undefined) {
+    set.push(`installed_at = $${i++}`);
+    values.push(installedAt);
+  }
+
+  if (archivedAt !== undefined) {
+    set.push(`archived_at = $${i++}`);
+    values.push(archivedAt);
+  }
+
+  if (warningLowThreshold !== undefined) {
+    set.push(`warning_low_threshold = $${i++}`);
+    values.push(warningLowThreshold);
+  }
+
+  if (warningHighThreshold !== undefined) {
+    set.push(`warning_high_threshold = $${i++}`);
+    values.push(warningHighThreshold);
+  }
+
+  if (criticalLowThreshold !== undefined) {
+    set.push(`critical_low_threshold = $${i++}`);
+    values.push(criticalLowThreshold);
+  }
+
+  if (criticalHighThreshold !== undefined) {
+    set.push(`critical_high_threshold = $${i++}`);
+    values.push(criticalHighThreshold);
   }
 
   if (set.length === 0) {

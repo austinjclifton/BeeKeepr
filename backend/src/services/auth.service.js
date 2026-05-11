@@ -4,6 +4,7 @@ const bcrypt = require("bcrypt");
 
 const usersRepo = require("../db/users.db");
 const sessionService = require("./sessions.service.js");
+const { isDemoAccountUser } = require("../utils/demoAccount.js");
 
 /* ========================================================================== */
 /* Config                                                                      */
@@ -147,22 +148,23 @@ exports.updateBeekeeperAlertSettings = async ({
   return toAlertSettings(updated);
 };
 
-exports.resetPassword = async ({ userId, newPassword }) => {
-  validateUserId(userId);
+exports.resetPassword = async ({ beekeeperId, newPassword }) => {
+  validateUserId(beekeeperId);
 
   const next = normalizePassword(newPassword);
   validatePassword(next);
 
-  const user = await usersRepo.findById({ id: userId });
+  const user = await usersRepo.findById({ id: beekeeperId });
   if (!user) throw notFound("User not found");
+  if (isDemoAccountUser(user)) throw forbidden("Demo account is read-only");
 
   const newHash = await bcrypt.hash(next, BCRYPT_ROUNDS);
 
-  await usersRepo.updatePasswordHash({ id: userId, passwordHash: newHash });
+  await usersRepo.updatePasswordHash({ id: beekeeperId, passwordHash: newHash });
 
   // Policy: invalidate all sessions after password reset
   await sessionService.invalidateAllSessionsForUser({
-    beekeeperId: Number(userId),
+    beekeeperId: Number(beekeeperId),
   });
 };
 
@@ -188,16 +190,10 @@ exports.deleteUserAndSessions = async ({ userId, requesterId }) => {
 /* ========================================================================== */
 
 async function findAuthUserByIdentifier(identifier) {
-  // Route by contains @ which is correct enough for login
-  // Strict email validity is enforced during registration
-  if (looksLikeEmail(identifier)) {
-    return usersRepo.findByEmail({ email: normalizeEmail(identifier) });
-  }
-  return usersRepo.findByUsername({ username: identifier });
-}
-
-function looksLikeEmail(value) {
-  return typeof value === "string" && value.includes("@");
+  return usersRepo.findByLoginIdentifier({
+    identifier,
+    email: normalizeEmail(identifier),
+  });
 }
 
 /* ========================================================================== */
@@ -386,6 +382,11 @@ function toPublicUser(user) {
     id: user.id,
     username: user.username,
     email: user.email,
+    alerts_enabled: user.alerts_enabled,
+    warning_low_threshold: user.warning_low_threshold,
+    warning_high_threshold: user.warning_high_threshold,
+    critical_low_threshold: user.critical_low_threshold,
+    critical_high_threshold: user.critical_high_threshold,
   };
 }
 
@@ -397,6 +398,7 @@ function toAlertSettings(row) {
     criticalLow: row.critical_low_threshold,
     criticalHigh: row.critical_high_threshold,
     updatedAt: row.updated_at,
+    propagatedHiveCount: row.propagated_hive_count ?? 0,
   };
 }
 

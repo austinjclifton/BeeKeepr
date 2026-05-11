@@ -1,10 +1,10 @@
 openapi: 3.0.3
 
 info:
-  title: Beehive Monitoring API
+  title: BeeKeepr API
   version: 1.0.0
   description: |
-    API for monitoring beehives and ingesting telemetry data.
+    API for BeeKeepr beehive monitoring and telemetry ingest.
 
     Authentication & security:
 
@@ -51,6 +51,8 @@ tags:
     description: Manage devices (owned through hive → beekeeper)
   - name: Readings
     description: Read-only telemetry query endpoints
+  - name: Analytics
+    description: Multi-hive analytics endpoints for dashboards and comparisons
   - name: Ingest
     description: Device telemetry ingestion endpoints
 
@@ -143,6 +145,34 @@ components:
         type: string
         enum: [asc, desc]
         default: desc
+
+    AnalyticsRangeQuery:
+      name: range
+      in: query
+      required: false
+      description: Preset analytics window. Use either range or start/end, not both.
+      schema:
+        type: string
+        enum: [1d, 3d, 7d, 1m]
+        default: 1d
+
+    AnalyticsStartQuery:
+      name: start
+      in: query
+      required: false
+      description: Custom analytics window start. Must be used with end and without range.
+      schema:
+        type: string
+        format: date-time
+
+    AnalyticsEndQuery:
+      name: end
+      in: query
+      required: false
+      description: Custom analytics window end. Must be after start and used without range.
+      schema:
+        type: string
+        format: date-time
 
   responses:
     BadRequestError:
@@ -401,7 +431,7 @@ components:
       type: object
       additionalProperties: false
       required:
-        [id, beekeeper_id, name, notes, location_id, created_at, updated_at]
+        [id, beekeeper_id, name, status, notes, location_id, created_at, updated_at]
       properties:
         id:
           type: integer
@@ -418,6 +448,29 @@ components:
         location_id:
           type: integer
           format: int64
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive, archived]
+        installed_at:
+          type: string
+          format: date-time
+          nullable: true
+        archived_at:
+          type: string
+          format: date-time
+          nullable: true
+        warning_low_threshold:
+          type: number
+          nullable: true
+        warning_high_threshold:
+          type: number
+          nullable: true
+        critical_low_threshold:
+          type: number
+          nullable: true
+        critical_high_threshold:
+          type: number
           nullable: true
         created_at:
           type: string
@@ -803,6 +856,292 @@ components:
       properties:
         reading:
           $ref: "#/components/schemas/LatestHiveReading"
+
+    HiveLatestReadingResponse:
+      type: object
+      additionalProperties: false
+      required: [hiveId, reading]
+      properties:
+        hiveId:
+          type: integer
+          format: int64
+        reading:
+          nullable: true
+          type: object
+          additionalProperties: false
+          properties:
+            id:
+              type: integer
+              format: int64
+            deviceId:
+              type: integer
+              format: int64
+            temperature:
+              type: number
+            rssi:
+              type: integer
+              nullable: true
+            bucketAt:
+              type: string
+              format: date-time
+            receivedAt:
+              type: string
+              format: date-time
+
+    HiveStatusItem:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          hiveId,
+          name,
+          status,
+          locationName,
+          latestTemperature,
+          latestReadingAt,
+          readingCount,
+          averageTemperature,
+          minTemperature,
+          maxTemperature,
+          temperatureSwing,
+          warningCount,
+          criticalCount,
+          externalTemperature,
+          externalHumidityPct,
+          externalWindMps,
+          externalCloudPct,
+          externalConditionAt,
+          healthStatus,
+        ]
+      properties:
+        hiveId:
+          type: integer
+          format: int64
+        name:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, archived]
+        locationName:
+          type: string
+          nullable: true
+        latestTemperature:
+          type: number
+          nullable: true
+        latestReadingAt:
+          type: string
+          format: date-time
+          nullable: true
+        readingCount:
+          type: integer
+        averageTemperature:
+          type: number
+          nullable: true
+        minTemperature:
+          type: number
+          nullable: true
+        maxTemperature:
+          type: number
+          nullable: true
+        temperatureSwing:
+          type: number
+          nullable: true
+        warningCount:
+          type: integer
+        criticalCount:
+          type: integer
+        externalTemperature:
+          type: number
+          nullable: true
+        externalHumidityPct:
+          type: number
+          nullable: true
+        externalWindMps:
+          type: number
+          nullable: true
+        externalCloudPct:
+          type: number
+          nullable: true
+        externalConditionAt:
+          type: string
+          format: date-time
+          nullable: true
+        healthStatus:
+          type: string
+          enum: [offline, critical, warning, healthy]
+
+    HivesStatusResponse:
+      type: object
+      additionalProperties: false
+      required: [range, mode, startAt, endAt, hives]
+      properties:
+        range:
+          type: string
+          enum: [1d, 3d, 7d, 1m, custom]
+        mode:
+          type: string
+          enum: [range, custom]
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        hives:
+          type: array
+          items:
+            $ref: "#/components/schemas/HiveStatusItem"
+
+    HiveAnalyticsSummary:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          readingCount,
+          averageTemperature,
+          minTemperature,
+          maxTemperature,
+          temperatureSwing,
+          warningCount,
+          criticalCount,
+          latestTemperature,
+          latestReadingAt,
+        ]
+      properties:
+        readingCount:
+          type: integer
+        averageTemperature:
+          type: number
+          nullable: true
+        minTemperature:
+          type: number
+          nullable: true
+        maxTemperature:
+          type: number
+          nullable: true
+        temperatureSwing:
+          type: number
+          nullable: true
+        warningCount:
+          type: integer
+        criticalCount:
+          type: integer
+        latestTemperature:
+          type: number
+          nullable: true
+        latestReadingAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    HiveAnalyticsSummaryResponse:
+      type: object
+      additionalProperties: false
+      required: [hiveId, range, mode, startAt, endAt, summary]
+      properties:
+        hiveId:
+          type: integer
+          format: int64
+        range:
+          type: string
+          enum: [1d, 3d, 7d, 1m, custom]
+        mode:
+          type: string
+          enum: [range, custom]
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        summary:
+          $ref: "#/components/schemas/HiveAnalyticsSummary"
+
+    TemperatureSeriesPoint:
+      type: object
+      additionalProperties: false
+      required:
+        [bucketAt, averageTemperature, minTemperature, maxTemperature, readingCount]
+      properties:
+        bucketAt:
+          type: string
+          format: date-time
+        averageTemperature:
+          type: number
+        minTemperature:
+          type: number
+        maxTemperature:
+          type: number
+        readingCount:
+          type: integer
+
+    HiveTemperatureSeriesResponse:
+      type: object
+      additionalProperties: false
+      required: [hiveId, range, mode, startAt, endAt, bucketSize, series]
+      properties:
+        hiveId:
+          type: integer
+          format: int64
+        range:
+          type: string
+          enum: [1d, 3d, 7d, 1m, custom]
+        mode:
+          type: string
+          enum: [range, custom]
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        bucketSize:
+          type: string
+          enum: [30m, hour, day]
+        series:
+          type: array
+          items:
+            $ref: "#/components/schemas/TemperatureSeriesPoint"
+
+    CompareHiveSeries:
+      type: object
+      additionalProperties: false
+      required: [hiveId, name, series]
+      properties:
+        hiveId:
+          type: integer
+          format: int64
+        name:
+          type: string
+        series:
+          type: array
+          items:
+            $ref: "#/components/schemas/TemperatureSeriesPoint"
+
+    CompareHivesResponse:
+      type: object
+      additionalProperties: false
+      required: [range, mode, startAt, endAt, bucketSize, hives]
+      properties:
+        range:
+          type: string
+          enum: [1d, 3d, 7d, 1m, custom]
+        mode:
+          type: string
+          enum: [range, custom]
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        bucketSize:
+          type: string
+          enum: [30m, hour, day]
+        hives:
+          type: array
+          items:
+            $ref: "#/components/schemas/CompareHiveSeries"
 
     IngestReadingResponse:
       type: object
@@ -1226,6 +1565,29 @@ paths:
                   type: integer
                   format: int64
                   nullable: true
+                status:
+                  type: string
+                  enum: [active, inactive, archived]
+                installedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                archivedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                warningLowThreshold:
+                  type: number
+                  nullable: true
+                warningHighThreshold:
+                  type: number
+                  nullable: true
+                criticalLowThreshold:
+                  type: number
+                  nullable: true
+                criticalHighThreshold:
+                  type: number
+                  nullable: true
       responses:
         "201":
           description: Hive created
@@ -1255,6 +1617,102 @@ paths:
                 $ref: "#/components/schemas/HiveListResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+
+  /api/hives/status:
+    get:
+      tags: [Analytics]
+      summary: Return all-hives dashboard status
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/AnalyticsRangeQuery"
+        - $ref: "#/components/parameters/AnalyticsStartQuery"
+        - $ref: "#/components/parameters/AnalyticsEndQuery"
+      responses:
+        "200":
+          description: Status for each hive owned by the authenticated beekeeper
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HivesStatusResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
+  /api/hives/{hiveId}/readings/latest:
+    parameters:
+      - $ref: "#/components/parameters/HiveIdPath"
+    get:
+      tags: [Analytics]
+      summary: Return latest reading for one owned hive
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Latest reading for the hive, or null when no reading exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HiveLatestReadingResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/hives/{hiveId}/analytics/summary:
+    parameters:
+      - $ref: "#/components/parameters/HiveIdPath"
+    get:
+      tags: [Analytics]
+      summary: Return one-hive analytics summary
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/AnalyticsRangeQuery"
+        - $ref: "#/components/parameters/AnalyticsStartQuery"
+        - $ref: "#/components/parameters/AnalyticsEndQuery"
+      responses:
+        "200":
+          description: Summary metrics for the selected hive and analytics window
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HiveAnalyticsSummaryResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/hives/{hiveId}/analytics/temperature:
+    parameters:
+      - $ref: "#/components/parameters/HiveIdPath"
+    get:
+      tags: [Analytics]
+      summary: Return one-hive bucketed temperature series
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/AnalyticsRangeQuery"
+        - $ref: "#/components/parameters/AnalyticsStartQuery"
+        - $ref: "#/components/parameters/AnalyticsEndQuery"
+      responses:
+        "200":
+          description: Bucketed temperature series for the selected hive and analytics window
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HiveTemperatureSeriesResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
 
   /api/hives/{id}:
     parameters:
@@ -1298,6 +1756,29 @@ paths:
                 locationId:
                   type: integer
                   format: int64
+                  nullable: true
+                status:
+                  type: string
+                  enum: [active, inactive, archived]
+                installedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                archivedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                warningLowThreshold:
+                  type: number
+                  nullable: true
+                warningHighThreshold:
+                  type: number
+                  nullable: true
+                criticalLowThreshold:
+                  type: number
+                  nullable: true
+                criticalHighThreshold:
+                  type: number
                   nullable: true
       responses:
         "200":
@@ -1496,6 +1977,7 @@ paths:
       description: If a location already exists for the given rounded coordinates, the existing record is returned.
       security:
         - sessionCookie: []
+          csrfToken: []
       requestBody:
         required: true
         content:
@@ -1524,6 +2006,8 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
 
   /api/locations/{locationId}:
     parameters:
@@ -1550,6 +2034,7 @@ paths:
       description: Name may be set to null. Latitude and longitude must be provided together when updating coordinates.
       security:
         - sessionCookie: []
+          csrfToken: []
       requestBody:
         required: true
         content:
@@ -1577,6 +2062,8 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
     delete:
@@ -1584,11 +2071,14 @@ paths:
       summary: Delete location
       security:
         - sessionCookie: []
+          csrfToken: []
       responses:
         "204":
           description: Location deleted
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
 
@@ -1655,6 +2145,7 @@ paths:
       description: Returns the current 10-minute bucket row. If a row for the current bucket already exists, the existing row is returned without calling the upstream provider again.
       security:
         - sessionCookie: []
+          csrfToken: []
       parameters:
         - $ref: "#/components/parameters/HiveIdQueryRequired"
       responses:
@@ -1668,6 +2159,8 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
         "404":
           description: Hive not found or hive has no location
           content:
@@ -1713,10 +2206,11 @@ paths:
           minimum: 1
     patch:
       tags: [Alerts]
-      summary: Resolve a critical alert
-      description: Only alerts with severity `critical` can be resolved. If the alert is already resolved, the existing alert is returned.
+      summary: Resolve a warning alert
+      description: Only alerts with severity `warning` can be manually resolved. Critical alerts remain unresolved until backend/system logic resolves them.
       security:
         - sessionCookie: []
+          csrfToken: []
       responses:
         "200":
           description: Alert resolved or already resolved
@@ -1724,6 +2218,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AlertResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /api/analytics/hives/compare:
+    get:
+      tags: [Analytics]
+      summary: Compare bucketed temperature series across owned hives
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/AnalyticsRangeQuery"
+        - $ref: "#/components/parameters/AnalyticsStartQuery"
+        - $ref: "#/components/parameters/AnalyticsEndQuery"
+        - name: hiveIds
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Comma-separated hive ids, up to 10 hives
+      responses:
+        "200":
+          description: Bucketed temperature series grouped by hive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompareHivesResponse"
         "400":
           $ref: "#/components/responses/BadRequestError"
         "401":

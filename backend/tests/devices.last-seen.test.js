@@ -9,6 +9,7 @@ const request = require("supertest");
 const backendRoot = path.resolve(__dirname, "..");
 
 const authModulePath = path.join(backendRoot, "src/middleware/requireAuth.js");
+const csrfModulePath = path.join(backendRoot, "src/middleware/requireCsrf.js");
 const serviceModulePath = path.join(
   backendRoot,
   "src/services/devices.service.js",
@@ -22,6 +23,7 @@ function clearRequireCache() {
   ];
   delete require.cache[serviceModulePath];
   delete require.cache[authModulePath];
+  delete require.cache[csrfModulePath];
 }
 
 function buildTestApp({ touchLastSeenImpl }) {
@@ -34,7 +36,20 @@ function buildTestApp({ touchLastSeenImpl }) {
     exports: {
       requireAuth: (req, res, next) => {
         req.user = { id: 101 };
+        req.session = { csrfToken: "csrf-101" };
         next();
+      },
+    },
+  };
+
+  require.cache[csrfModulePath] = {
+    id: csrfModulePath,
+    filename: csrfModulePath,
+    loaded: true,
+    exports: {
+      requireCsrf: (req, res, next) => {
+        if (req.get("x-csrf-token") === req.session?.csrfToken) return next();
+        return res.status(403).json({ error: "Invalid CSRF token" });
       },
     },
   };
@@ -81,6 +96,7 @@ test("POST /api/devices/:id/last-seen updates last seen and returns device", asy
 
   const res = await request(app)
     .post("/api/devices/42/last-seen")
+    .set("x-csrf-token", "csrf-101")
     .send({ seenAt })
     .expect(200);
 
@@ -101,6 +117,7 @@ test("POST /api/devices/:id/last-seen returns 404 when device is not found", asy
 
   const res = await request(app)
     .post("/api/devices/999/last-seen")
+    .set("x-csrf-token", "csrf-101")
     .send({})
     .expect(404);
 
@@ -119,6 +136,7 @@ test("POST /api/devices/:id/last-seen returns 400 for invalid device id", async 
 
   const res = await request(app)
     .post("/api/devices/not-a-number/last-seen")
+    .set("x-csrf-token", "csrf-101")
     .send({})
     .expect(400);
 

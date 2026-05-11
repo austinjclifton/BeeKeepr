@@ -10,7 +10,7 @@ sequenceDiagram
   participant SR as Sessions DB (Repo)
   participant DB as PostgreSQL
 
-  Note over U,C: Login to obtain session cookie + CSRF tokn
+  Note over U,C: Login to obtain session cookie + CSRF token
 
   U->>C: Submit identifier + password
   C->>R: POST /api/auth/login: { identifier, password }
@@ -23,7 +23,7 @@ sequenceDiagram
     AC-->>C: 401 { error: "invalid credentials" }
     C-->>U: Show error
   else Valid credentials
-    AS->>SS: createSession({ userId, ip, userAgent })
+    AS->>SS: createSession({ beekeeperId, ip, userAgent })
     SS->>SS: Generate sessionToken (opaque random)
     SS->>SS: Generate csrfToken (random hex, 32 bytes)
     SS->>SS: Compute expiresAt (now + 7 days)

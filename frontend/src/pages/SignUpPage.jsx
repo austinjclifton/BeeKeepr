@@ -5,23 +5,23 @@ import { apiFetch, setCsrfToken, setCurrentUser } from '../api';
 export default function SignUpPage() {
   const navigate = useNavigate();
 
-  const [username, setUsername]           = useState('');
-  const [email, setEmail]                 = useState('');
-  const [password, setPassword]           = useState('');
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError]                 = useState('');
-  const [loading, setLoading]             = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   function validate() {
-    if (!username.trim())        return 'Username is required.';
+    if (!username.trim()) return 'Username is required.';
     if (username.trim().length < 3) return 'Username must be at least 3 characters.';
-    if (!email.trim())           return 'Email is required.';
+    if (!email.trim()) return 'Email is required.';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
-                                 return 'Please enter a valid email address.';
-    if (!password)               return 'Password is required.';
-    if (password.length < 8)     return 'Password must be at least 8 characters.';
+      return 'Please enter a valid email address.';
+    if (!password) return 'Password is required.';
+    if (password.length < 8) return 'Password must be at least 8 characters.';
     if (password !== confirmPassword)
-                                 return 'Passwords do not match.';
+      return 'Passwords do not match.';
     return null;
   }
 
@@ -34,12 +34,12 @@ export default function SignUpPage() {
 
     setLoading(true);
     try {
-      // POST /api/auth/register → { user, csrfToken }
+      // Register and seed session
       const data = await apiFetch('/api/auth/register', {
         method: 'POST',
         body: JSON.stringify({
           username: username.trim(),
-          email:    email.trim(),
+          email: email.trim(),
           password,
         }),
       });
@@ -53,15 +53,15 @@ export default function SignUpPage() {
     }
   };
 
-  /* ── Shared input focus/blur handlers ───────────────────────────── */
+  /* Input focus state */
 
   const onFocus = (e) => {
-    e.target.style.borderColor = 'var(--navy)';
-    e.target.style.background  = 'white';
+    e.target.style.borderColor = 'var(--amber)';
+    e.target.style.background = 'rgba(255,255,255,0.08)';
   };
   const onBlur = (e) => {
     e.target.style.borderColor = 'var(--border)';
-    e.target.style.background  = '#f8fafc';
+    e.target.style.background = 'rgba(255,255,255,0.05)';
   };
 
   const inputStyle = {
@@ -71,17 +71,17 @@ export default function SignUpPage() {
     borderRadius: '10px',
     fontSize: '14px',
     color: 'var(--text-primary)',
-    background: '#f8fafc',
+    background: 'rgba(255,255,255,0.05)',
     outline: 'none',
     transition: 'border-color 0.15s, background 0.15s',
   };
 
-  /* ── Render ──────────────────────────────────────────────────────── */
+  /* Sign-up shell */
 
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#eef0f4',
+      background: 'radial-gradient(circle at top right, rgba(245,185,66,0.12), transparent 30rem), var(--bg)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -90,7 +90,7 @@ export default function SignUpPage() {
     }}>
       <div style={{ width: '100%', maxWidth: '420px', animation: 'fadeIn 0.4s ease' }}>
 
-        {/* Logo header — identical to LoginPage */}
+        {/* Brand header */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
             <div style={{
@@ -100,30 +100,31 @@ export default function SignUpPage() {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-                <path d="M12 2C8 2 5 5 5 9c0 2.5 1.2 4.7 3 6.1V20a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-4.9c1.8-1.4 3-3.6 3-6.1 0-4-3-7-7-7z" fill="white" opacity="0.95"/>
+                <path d="M12 2C8 2 5 5 5 9c0 2.5 1.2 4.7 3 6.1V20a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-4.9c1.8-1.4 3-3.6 3-6.1 0-4-3-7-7-7z" fill="white" opacity="0.95" />
               </svg>
             </div>
             <div style={{ textAlign: 'left' }}>
-              <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--navy)', lineHeight: 1.1, letterSpacing: '-0.02em' }}>
-                Asheville
+              <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1, letterSpacing: '-0.02em' }}>
+                BeeKeepr
               </div>
             </div>
           </div>
         </div>
 
-        {/* Card */}
+        {/* Sign-up card */}
         <div style={{
-          background: 'white',
+          background: 'var(--surface-elevated)',
+          border: '1px solid var(--border)',
           borderRadius: '16px',
-          boxShadow: '0 4px 24px rgba(30,45,74,0.10), 0 1px 4px rgba(30,45,74,0.06)',
+          boxShadow: 'var(--shadow-lg)',
           overflow: 'hidden',
         }}>
-          {/* Top accent bar */}
+          {/* Accent bar */}
           <div style={{ height: '4px', background: 'linear-gradient(90deg, var(--navy) 0%, var(--amber) 100%)' }} />
 
           <div style={{ padding: '36px 36px 32px' }}>
             <div style={{ marginBottom: '24px' }}>
-              <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--navy)', marginBottom: '4px' }}>
+              <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '4px' }}>
                 Create your account
               </div>
               <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
@@ -155,7 +156,7 @@ export default function SignUpPage() {
                 gap: '8px',
               }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
                 {error}
               </div>
@@ -175,8 +176,8 @@ export default function SignUpPage() {
                 <div style={{ position: 'relative' }}>
                   <span style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                      <circle cx="12" cy="7" r="4"/>
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
                     </svg>
                   </span>
                   <input
@@ -205,8 +206,8 @@ export default function SignUpPage() {
                 <div style={{ position: 'relative' }}>
                   <span style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                      <polyline points="22,6 12,13 2,6"/>
+                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                      <polyline points="22,6 12,13 2,6" />
                     </svg>
                   </span>
                   <input
@@ -234,8 +235,8 @@ export default function SignUpPage() {
                 <div style={{ position: 'relative' }}>
                   <span style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                     </svg>
                   </span>
                   <input
@@ -263,8 +264,8 @@ export default function SignUpPage() {
                 <div style={{ position: 'relative' }}>
                   <span style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                     </svg>
                   </span>
                   <input
@@ -275,7 +276,7 @@ export default function SignUpPage() {
                     required
                     style={{
                       ...inputStyle,
-                      // Highlight mismatch once the user has typed something in both fields
+                      // Flag password mismatch
                       borderColor: confirmPassword && password !== confirmPassword
                         ? '#fca5a5'
                         : 'var(--border)',
@@ -284,7 +285,7 @@ export default function SignUpPage() {
                     onBlur={onBlur}
                   />
                 </div>
-                {/* Inline mismatch hint — only shown while typing */}
+                {/* Mismatch hint */}
                 {confirmPassword && password !== confirmPassword && (
                   <div style={{ marginTop: '5px', fontSize: '12px', color: '#dc2626' }}>
                     Passwords do not match
@@ -299,8 +300,8 @@ export default function SignUpPage() {
                 style={{
                   width: '100%',
                   padding: '13px',
-                  background: loading ? '#94a3b8' : 'var(--navy)',
-                  color: 'white',
+                  background: loading ? '#555' : 'var(--amber)',
+                  color: '#050505',
                   border: 'none',
                   borderRadius: '10px',
                   fontWeight: 700,
@@ -313,8 +314,8 @@ export default function SignUpPage() {
                   transition: 'background 0.15s',
                   letterSpacing: '0.01em',
                 }}
-                onMouseEnter={e => { if (!loading) e.currentTarget.style.background = 'var(--navy-light)'; }}
-                onMouseLeave={e => { if (!loading) e.currentTarget.style.background = 'var(--navy)'; }}
+                onMouseEnter={e => { if (!loading) e.currentTarget.style.background = 'var(--amber-light)'; }}
+                onMouseLeave={e => { if (!loading) e.currentTarget.style.background = 'var(--amber)'; }}
               >
                 {loading ? (
                   <>
@@ -325,7 +326,7 @@ export default function SignUpPage() {
                   <>
                     Create Account
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                      <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
                     </svg>
                   </>
                 )}
@@ -337,7 +338,7 @@ export default function SignUpPage() {
           {/* Footer */}
           <div style={{
             padding: '14px 36px',
-            background: '#f8fafc',
+            background: 'var(--surface)',
             borderTop: '1px solid var(--border)',
             textAlign: 'center',
           }}>

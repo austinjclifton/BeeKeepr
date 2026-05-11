@@ -20,6 +20,11 @@ const requireIngestTokenPath = path.join(
   backendRoot,
   "src/middleware/requireIngestToken.js",
 );
+const requireWritableAccountPath = path.join(
+  backendRoot,
+  "src/middleware/requireWritableAccount.js",
+);
+const demoAccountUtilPath = path.join(backendRoot, "src/utils/demoAccount.js");
 
 function clearRequireCache(paths) {
   for (const p of paths) delete require.cache[p];
@@ -91,6 +96,21 @@ function buildRequireIngestTokenApp() {
     res
       .status(err.status || 500)
       .json({ error: err.message || "Internal server error" });
+  });
+  return app;
+}
+
+function buildRequireWritableAccountApp(user) {
+  clearRequireCache([requireWritableAccountPath, demoAccountUtilPath]);
+  const { requireWritableAccount } = require(requireWritableAccountPath);
+
+  const app = express();
+  app.use((req, res, next) => {
+    req.user = user;
+    next();
+  });
+  app.post("/state-change", requireWritableAccount, (req, res) => {
+    res.status(200).json({ ok: true });
   });
   return app;
 }
@@ -211,5 +231,43 @@ test("requireIngestToken enforces INGEST_SECRET when configured", async () => {
   } finally {
     if (prior === undefined) delete process.env.INGEST_SECRET;
     else process.env.INGEST_SECRET = prior;
+  }
+});
+
+test("requireWritableAccount blocks configured demo account writes", async () => {
+  const prior = process.env.DEMO_ACCOUNT_USERNAME;
+  process.env.DEMO_ACCOUNT_USERNAME = "demo";
+
+  try {
+    const app = buildRequireWritableAccountApp({
+      id: 10,
+      username: "demo",
+    });
+
+    const res = await request(app).post("/state-change").expect(403);
+
+    assert.equal(res.body.error, "Demo account is read-only");
+  } finally {
+    if (prior === undefined) delete process.env.DEMO_ACCOUNT_USERNAME;
+    else process.env.DEMO_ACCOUNT_USERNAME = prior;
+  }
+});
+
+test("requireWritableAccount allows non-demo account writes", async () => {
+  const prior = process.env.DEMO_ACCOUNT_USERNAME;
+  process.env.DEMO_ACCOUNT_USERNAME = "demo";
+
+  try {
+    const app = buildRequireWritableAccountApp({
+      id: 11,
+      username: "beekeeper",
+    });
+
+    const res = await request(app).post("/state-change").expect(200);
+
+    assert.equal(res.body.ok, true);
+  } finally {
+    if (prior === undefined) delete process.env.DEMO_ACCOUNT_USERNAME;
+    else process.env.DEMO_ACCOUNT_USERNAME = prior;
   }
 });

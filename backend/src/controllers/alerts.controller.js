@@ -32,8 +32,8 @@ exports.list = async (req, res, next) => {
 /**
  * PATCH /api/alerts/:alertId/resolve
  *
- * Resolves a critical alert.
- * - Only critical alerts can be resolved
+ * Resolves a warning alert
+ * - Only warning alerts can be manually resolved
  */
 exports.resolve = async (req, res, next) => {
   try {

@@ -104,7 +104,7 @@ exports.deleteDevice = async ({ beekeeperId, deviceId }) => {
 /* ========================================================================== */
 
 async function assertHiveHasNoDevice({ beekeeperId, hiveId }) {
-  // Uses listByHiveScoped for compatibility with current repo surface
+  // Uses scoped hive listing so ownership rules match device creation
   const existing = await deviceRepo.listDevicesByHiveScoped({ beekeeperId, hiveId });
   if (existing && existing.length > 0) {
     throw conflict("This hive already has a device");

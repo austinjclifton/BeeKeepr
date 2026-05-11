@@ -64,7 +64,26 @@ exports.create = async (req, res, next) => {
       beekeeperId: authedUserId(req),
       name: body.name,
       notes: body.notes, // service handles semantics
-      locationId: body.locationId, // allow locationId on create
+      locationId: firstDefined(body.locationId, body.location_id),
+      status: body.status,
+      installedAt: firstDefined(body.installedAt, body.installed_at),
+      archivedAt: firstDefined(body.archivedAt, body.archived_at),
+      warningLowThreshold: firstDefined(
+        body.warningLowThreshold,
+        body.warning_low_threshold,
+      ),
+      warningHighThreshold: firstDefined(
+        body.warningHighThreshold,
+        body.warning_high_threshold,
+      ),
+      criticalLowThreshold: firstDefined(
+        body.criticalLowThreshold,
+        body.critical_low_threshold,
+      ),
+      criticalHighThreshold: firstDefined(
+        body.criticalHighThreshold,
+        body.critical_high_threshold,
+      ),
     });
 
     return res.status(201).json({ hive });
@@ -90,7 +109,26 @@ exports.update = async (req, res, next) => {
       hiveId: toPositiveInt(req.params.id, "id"),
       name: body.name,
       notes: body.notes,
-      locationId: body.locationId,
+      locationId: firstDefined(body.locationId, body.location_id),
+      status: body.status,
+      installedAt: firstDefined(body.installedAt, body.installed_at),
+      archivedAt: firstDefined(body.archivedAt, body.archived_at),
+      warningLowThreshold: firstDefined(
+        body.warningLowThreshold,
+        body.warning_low_threshold,
+      ),
+      warningHighThreshold: firstDefined(
+        body.warningHighThreshold,
+        body.warning_high_threshold,
+      ),
+      criticalLowThreshold: firstDefined(
+        body.criticalLowThreshold,
+        body.critical_low_threshold,
+      ),
+      criticalHighThreshold: firstDefined(
+        body.criticalHighThreshold,
+        body.critical_high_threshold,
+      ),
     });
 
     if (!hive) {
@@ -134,6 +172,14 @@ exports.remove = async (req, res, next) => {
 
 function safeBody(req) {
   return req.body ?? {};
+}
+
+function firstDefined(...values) {
+  for (const value of values) {
+    if (value !== undefined) return value;
+  }
+
+  return undefined;
 }
 
 function badRequest(message) {

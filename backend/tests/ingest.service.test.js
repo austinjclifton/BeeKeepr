@@ -106,6 +106,9 @@ test("createReading forwards payload to repo and returns inserted reading", asyn
   assert.equal(captured.temperature, 73.4);
   assert.equal(captured.rssiDbm, -90);
   assert.equal(typeof captured.bucketAt, "string");
+  assert.equal(new Date(captured.bucketAt).getUTCMinutes() % 10, 0);
+  assert.equal(new Date(captured.bucketAt).getUTCSeconds(), 0);
+  assert.equal(new Date(captured.bucketAt).getUTCMilliseconds(), 0);
   assert.equal(result.inserted, true);
   assert.equal(result.reading.id, 7);
 });

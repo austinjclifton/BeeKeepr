@@ -2,20 +2,22 @@
 const { query } = require("./pool");
 
 /**
- * Create/replace a reset token for a user (1 active token per user)
+ * Create/replace a reset token for a beekeeper
  */
-exports.createOrReplace = async ({ userId, tokenHash, expiresAt }) => {
+exports.createOrReplace = async ({ beekeeperId, tokenHash, expiresAt }) => {
   const rows = await query(
     `
-    INSERT INTO password_reset_token (user_id, token_hash, expires_at)
+    INSERT INTO password_reset_token (beekeeper_id, token_hash, expires_at)
     VALUES ($1, $2, $3)
-    ON CONFLICT (user_id)
+    ON CONFLICT (beekeeper_id)
     DO UPDATE SET
       token_hash = EXCLUDED.token_hash,
-      expires_at = EXCLUDED.expires_at
-    RETURNING user_id
+      expires_at = EXCLUDED.expires_at,
+      created_at = now(),
+      consumed_at = NULL
+    RETURNING beekeeper_id
     `,
-    [userId, tokenHash, expiresAt],
+    [beekeeperId, tokenHash, expiresAt],
   );
 
   return rows[0] ?? null;
@@ -27,7 +29,7 @@ exports.createOrReplace = async ({ userId, tokenHash, expiresAt }) => {
 exports.findByTokenHash = async ({ tokenHash }) => {
   const rows = await query(
     `
-    SELECT user_id, token_hash, expires_at
+    SELECT beekeeper_id, token_hash, expires_at, created_at, consumed_at
     FROM password_reset_token
     WHERE token_hash = $1
     LIMIT 1
@@ -39,17 +41,21 @@ exports.findByTokenHash = async ({ tokenHash }) => {
 };
 
 /**
- * Delete any reset token for a user
+ * Mark any reset token for a beekeeper as consumed
  */
-exports.deleteForUser = async ({ userId }) => {
+exports.markConsumedForBeekeeper = async ({ beekeeperId }) => {
   const rows = await query(
     `
-    DELETE FROM password_reset_token
-    WHERE user_id = $1
-    RETURNING user_id
+    UPDATE password_reset_token
+    SET consumed_at = now()
+    WHERE beekeeper_id = $1
+      AND consumed_at IS NULL
+    RETURNING beekeeper_id
     `,
-    [userId],
+    [beekeeperId],
   );
 
   return rows.length > 0;
 };
+
+exports.deleteForBeekeeper = exports.markConsumedForBeekeeper;

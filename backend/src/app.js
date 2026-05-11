@@ -22,17 +22,19 @@ const authRoutes = require("./routes/auth.routes");
 const sessionRoutes = require("./routes/sessions.routes");
 const hiveRoutes = require("./routes/hives.routes");
 const deviceRoutes = require("./routes/devices.routes");
-const readingRoutes = require("./routes/readings.routes");
 const ingestRoutes = require("./routes/ingest.routes");
 const externalRoutes = require("./routes/externalConditions.routes.js");
 const locationsRoutes = require("./routes/locations.routes.js");
 const alertsRoutes = require("./routes/alerts.routes.js");
+const analyticsRoutes = require("./routes/analytics.routes.js");
 
 // ----- Swagger -----
 const { setupSwagger } = require("./utils/swagger.js");
 
 const app = express();
 const frontendDistPath = path.resolve(__dirname, "../../frontend/dist");
+const isProduction = process.env.NODE_ENV === "production";
+const allowedCorsOrigins = getAllowedCorsOrigins();
 
 /* ================================================================
  * Global Middleware
@@ -49,7 +51,7 @@ app.use((req, res, next) => {
 
 app.use(
   cors({
-    origin: true,
+    origin: corsOrigin,
     credentials: true,
   }),
 );
@@ -65,10 +67,10 @@ app.use("/api/auth", authRoutes);
 app.use("/api/sessions", sessionRoutes);
 app.use("/api/hives", hiveRoutes);
 app.use("/api/devices", deviceRoutes);
-app.use("/api/readings", readingRoutes);
 app.use("/api/external-conditions", externalRoutes);
 app.use("/api/locations", locationsRoutes);
 app.use("/api/alerts", alertsRoutes);
+app.use("/api/analytics", analyticsRoutes);
 
 app.use("/ingest", ingestRoutes);
 
@@ -103,8 +105,14 @@ app.get("*", (req, res, next) => {
 app.use((err, req, res, next) => {
   console.error(err);
 
+  const status = err.status || 500;
+  const message =
+    isProduction && status >= 500
+      ? "Internal server error"
+      : err.message || "Internal server error";
+
   return res.status(err.status || 500).json({
-    error: err.message || "Internal server error",
+    error: message,
   });
 });
 
@@ -113,3 +121,35 @@ app.use((req, res) => {
 });
 
 module.exports = app;
+
+function corsOrigin(origin, callback) {
+  if (!origin) {
+    callback(null, true);
+    return;
+  }
+
+  if (allowedCorsOrigins.includes(origin)) {
+    callback(null, true);
+    return;
+  }
+
+  const err = new Error("CORS origin not allowed");
+  err.status = 403;
+  callback(err);
+}
+
+function getAllowedCorsOrigins() {
+  const raw = process.env.CORS_ORIGIN || process.env.CORS_ORIGINS || "";
+  const origins = raw
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (origins.length > 0) return origins;
+
+  if (isProduction) {
+    throw new Error("CORS_ORIGIN is required in production");
+  }
+
+  return ["http://localhost:5173", "http://127.0.0.1:5173"];
+}

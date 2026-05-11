@@ -1,254 +1,344 @@
-import { useState, useEffect } from 'react';
-import Navigation from "../components/Navigation";
-import { apiFetch } from '../api';
+import { useEffect, useState } from 'react';
+import Navigation from '../components/Navigation';
+import DashboardSection from '../components/analytics/DashboardSection';
+import HiveSelector from '../components/analytics/HiveSelector';
+import StatCard from '../components/analytics/StatCard';
+import StatusBadge from '../components/analytics/StatusBadge';
+import { ErrorState, LoadingState } from '../components/analytics/StateBlocks';
+import {
+  apiFetch,
+  friendlyApiMessage,
+  getHiveDevices,
+  getHiveLatestReading,
+} from '../api';
 import { useAuth } from '../hooks/useAuth';
+import { useHiveStatus } from '../hooks/useHiveStatus';
+import { useSelectedHive } from '../hooks/useSelectedHive';
+import {
+  LEGACY_SETTINGS_PREF_KEY,
+  SETTINGS_PREF_KEY,
+  readMigratedJson,
+  writeJson,
+} from '../storageKeys';
+import {
+  formatDateTime,
+  formatTemperature,
+  getHiveId,
+} from '../utils/analyticsFormat';
 
-const PREF_KEY = 'asheville_settings_v1';
-
+// Local settings defaults
 function loadLocalPrefs() {
-  try {
-    const raw = localStorage.getItem(PREF_KEY);
-    if (raw) {
-      const p = JSON.parse(raw);
-      if (parseFloat(p.criticalLow) < 60 || parseFloat(p.criticalHigh) < 60) {
-        return { ...p, criticalLow: '91', criticalHigh: '104', optimalLow: '93', optimalHigh: '99', tempUnit: 'fahrenheit' };
-      }
-      return p;
+  const prefs = readMigratedJson(SETTINGS_PREF_KEY, LEGACY_SETTINGS_PREF_KEY);
+  if (prefs) {
+    if (parseFloat(prefs.criticalLow) < 60 || parseFloat(prefs.criticalHigh) < 60) {
+      return defaultPrefs();
     }
-  } catch {}
-  return { criticalLow: '91', criticalHigh: '104', optimalLow: '93', optimalHigh: '99', alertEmail: '', interval: '10', tempUnit: 'fahrenheit', enableCritical: true, enableWarning: true, enableInfo: false, enableEmail: true, enableSMS: false, role: 'Beekeeper', phoneNum: '' };
-}
-function saveLocalPrefs(p) { try { localStorage.setItem(PREF_KEY, JSON.stringify(p)); } catch {} }
-
-function timeAgo(dateStr) {
-  if (!dateStr) return 'Never';
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins} min${mins !== 1 ? 's' : ''} ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs} hr${hrs !== 1 ? 's' : ''} ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
+    return { ...defaultPrefs(), ...prefs, tempUnit: 'fahrenheit' };
+  }
+  return defaultPrefs();
 }
 
-/* Hamburger trigger */
+function defaultPrefs() {
+  return {
+    criticalLow: '91',
+    criticalHigh: '104',
+    optimalLow: '93',
+    optimalHigh: '99',
+    enableEmail: true,
+    role: 'Beekeeper',
+    tempUnit: 'fahrenheit',
+  };
+}
+
+function saveLocalPrefs(prefs) {
+  writeJson(SETTINGS_PREF_KEY, prefs);
+}
+
+// Threshold helpers
+function prefsWithThresholds(prefs, source) {
+  const next = { ...prefs };
+  const mapping = [
+    ['criticalLow', source?.critical_low_threshold],
+    ['criticalHigh', source?.critical_high_threshold],
+    ['optimalLow', source?.warning_low_threshold],
+    ['optimalHigh', source?.warning_high_threshold],
+  ];
+
+  for (const [key, value] of mapping) {
+    const n = Number(value);
+    if (Number.isFinite(n)) next[key] = String(n);
+  }
+
+  return next;
+}
+
+function thresholdStateFromHive(hive, fallbackPrefs) {
+  return {
+    criticalLow: thresholdInputValue(hive?.criticalLowThreshold, fallbackPrefs.criticalLow),
+    warningLow: thresholdInputValue(hive?.warningLowThreshold, fallbackPrefs.optimalLow),
+    warningHigh: thresholdInputValue(hive?.warningHighThreshold, fallbackPrefs.optimalHigh),
+    criticalHigh: thresholdInputValue(hive?.criticalHighThreshold, fallbackPrefs.criticalHigh),
+  };
+}
+
+function thresholdInputValue(value, fallback) {
+  const n = Number(value);
+  if (Number.isFinite(n)) return String(n);
+  return fallback ?? '';
+}
+
+function parseThresholds(values) {
+  const parsed = {
+    criticalLow: Number(values.criticalLow),
+    warningLow: Number(values.warningLow),
+    warningHigh: Number(values.warningHigh),
+    criticalHigh: Number(values.criticalHigh),
+  };
+
+  if (Object.values(parsed).some(value => !Number.isFinite(value))) {
+    throw new Error('All thresholds must be valid numbers.');
+  }
+
+  if (!(parsed.criticalLow < parsed.warningLow && parsed.warningLow < parsed.warningHigh && parsed.warningHigh < parsed.criticalHigh)) {
+    throw new Error('Threshold order must be critical low, warning low, warning high, critical high.');
+  }
+
+  return parsed;
+}
+
 function HamburgerBtn() {
   return (
     <button
       className="mobile-menu-btn"
+      type="button"
       onClick={() => window.dispatchEvent(new Event('openMobileNav'))}
+      aria-label="Open navigation"
     >
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-        <line x1="3" y1="6" x2="21" y2="6"/>
-        <line x1="3" y1="12" x2="21" y2="12"/>
-        <line x1="3" y1="18" x2="21" y2="18"/>
+        <line x1="3" y1="6" x2="21" y2="6" />
+        <line x1="3" y1="12" x2="21" y2="12" />
+        <line x1="3" y1="18" x2="21" y2="18" />
       </svg>
     </button>
   );
 }
 
-/* ── Threshold Slider ─────────────────────────────────────────── */
-function ThresholdSlider({ label, value, min, max, onChange, color, alertText }) {
-  const pct = Math.max(0, Math.min(100, ((parseFloat(value) - min) / (max - min)) * 100));
+function Field({ label, value, onChange, type = 'text', disabled = false }) {
   return (
-    <div style={{ marginBottom: '4px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-        <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{label}</span>
-        <span style={{ fontSize: '14px', fontWeight: 700, color }}>{parseFloat(value).toFixed(1)}°F</span>
-      </div>
+    <label style={{ display: 'grid', gap: '8px' }}>
+      <span className="field-label">{label}</span>
       <input
-        type="range" min={min} max={max} step={0.5} value={parseFloat(value)}
-        onChange={e => onChange(e.target.value)}
-        style={{ width: '100%', background: `linear-gradient(to right, ${color} ${pct}%, #e2e8f0 ${pct}%)`, '--slider-color': color, borderRadius: '0' }}
-      />
-      {alertText && <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '8px', lineHeight: 1.5 }}>{alertText}</p>}
-    </div>
-  );
-}
-
-/* ── Toggle Row ───────────────────────────────────────────────── */
-function ToggleRow({ icon, label, description, checked, onChange, activeColor }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 0', borderBottom: '1px solid #f1f5f9' }}>
-      <div style={{ width: '36px', height: '36px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#94a3b8' }}>
-        {icon}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '14px', fontWeight: 600, color: '#1e2d4a' }}>{label}</div>
-        <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>{description}</div>
-      </div>
-      <button
-        role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
-        style={{ width: '46px', height: '26px', border: 'none', background: checked ? (activeColor || '#1e2d4a') : '#cbd5e1', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0, borderRadius: '0' }}
-      >
-        <span style={{ position: 'absolute', top: '4px', left: checked ? '24px' : '4px', width: '18px', height: '18px', background: 'white', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', borderRadius: '0' }} />
-      </button>
-    </div>
-  );
-}
-
-/* ── Section Card ─────────────────────────────────────────────── */
-function SectionCard({ icon, title, children }) {
-  return (
-    <div style={{ background: 'white', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '18px 24px', borderBottom: '1px solid #f1f5f9' }}>
-        <span style={{ color: '#f5a623' }}>{icon}</span>
-        <span style={{ fontSize: '12px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.08em', textTransform: 'uppercase' }}>{title}</span>
-      </div>
-      <div style={{ padding: '20px 24px' }}>{children}</div>
-    </div>
-  );
-}
-
-/* ── Field Input ──────────────────────────────────────────────── */
-function Field({ label, value, onChange, type = 'text', disabled }) {
-  return (
-    <div>
-      <label style={{ display: 'block', marginBottom: '6px', fontSize: '11px', fontWeight: 700, color: '#64748b', letterSpacing: '0.07em', textTransform: 'uppercase' }}>{label}</label>
-      <input
-        type={type} value={value} onChange={onChange ? e => onChange(e.target.value) : undefined}
+        className="dark-input"
+        type={type}
+        value={value}
         disabled={disabled}
-        style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', fontSize: '14px', color: disabled ? '#94a3b8' : '#1e2d4a', background: disabled ? '#f8fafc' : 'white', outline: 'none', cursor: disabled ? 'default' : 'text' }}
-        onFocus={e => { if (!disabled) e.target.style.borderColor = '#1e2d4a'; }}
-        onBlur={e => { e.target.style.borderColor = '#e2e8f0'; }}
+        onChange={event => onChange?.(event.target.value)}
       />
-    </div>
+    </label>
   );
 }
 
-/* ── Change Password Modal ────────────────────────────────────── */
+function ThresholdInput({ label, value, onChange, tone, disabled = false }) {
+  return (
+    <label className="analytics-card" style={{ display: 'grid', gap: '10px', padding: '16px' }}>
+      <span className="field-label">{label}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <input
+          className="dark-input"
+          type="number"
+          step="0.5"
+          value={value}
+          disabled={disabled}
+          onChange={event => onChange(event.target.value)}
+        />
+        <span style={{ color: tone || 'var(--amber)', fontWeight: 900 }}>°F</span>
+      </div>
+    </label>
+  );
+}
+
 function ChangePasswordModal({ onClose, onSuccess }) {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const handleSubmit = async (e) => {
-    e.preventDefault(); setError('');
-    if (next !== confirm) { setError('Passwords do not match.'); return; }
-    if (next.length < 8) { setError('Password must be at least 8 characters.'); return; }
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError('');
+    if (next !== confirm) {
+      setError('Passwords do not match.');
+      return;
+    }
+    if (next.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
     setLoading(true);
-    try { await apiFetch('/api/auth/change-password', { method: 'PATCH', body: JSON.stringify({ currentPassword: current, newPassword: next }) }); onSuccess(); }
-    catch (err) { setError(err.message || 'Failed to change password.'); }
-    finally { setLoading(false); }
+    try {
+      await apiFetch('/api/auth/change-password', {
+        method: 'PATCH',
+        body: JSON.stringify({ currentPassword: current, newPassword: next }),
+      });
+      onSuccess();
+    } catch (err) {
+      setError(friendlyApiMessage(err, 'Failed to change password.'));
+    } finally {
+      setLoading(false);
+    }
   };
+
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background: 'white', padding: '32px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-          <span style={{ fontSize: '16px', fontWeight: 800, color: '#1e2d4a' }}>Change Password</span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '20px', lineHeight: 1 }}>×</button>
-        </div>
-        {error && <div style={{ marginBottom: '16px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: '13px' }}>{error}</div>}
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '14px' }}><Field label="Current Password" value={current} onChange={setCurrent} type="password" /></div>
-          <div style={{ marginBottom: '14px' }}><Field label="New Password" value={next} onChange={setNext} type="password" /></div>
-          <div style={{ marginBottom: '20px' }}><Field label="Confirm New Password" value={confirm} onChange={setConfirm} type="password" /></div>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button type="button" onClick={onClose} style={{ flex: 1, padding: '10px', border: '1px solid #e2e8f0', background: 'white', fontSize: '14px', fontWeight: 600, color: '#64748b', cursor: 'pointer' }}>Cancel</button>
-            <button type="submit" disabled={loading} style={{ flex: 1, padding: '10px', border: 'none', background: loading ? '#94a3b8' : '#1e2d4a', color: 'white', fontSize: '14px', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}>{loading ? 'Saving…' : 'Update'}</button>
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.7)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        padding: '16px',
+      }}
+      onClick={event => { if (event.target === event.currentTarget) onClose(); }}
+    >
+      <form className="analytics-card" onSubmit={handleSubmit} style={{ width: '100%', maxWidth: '430px', padding: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '18px' }}>
+          <div>
+            <div className="section-eyebrow">Account Security</div>
+            <h2 style={{ color: 'var(--text-primary)', fontSize: '20px' }}>Change Password</h2>
           </div>
-        </form>
-      </div>
+          <button type="button" className="ghost-btn" onClick={onClose}>Close</button>
+        </div>
+        {error && <ErrorState message={error} />}
+        <div style={{ display: 'grid', gap: '14px' }}>
+          <Field label="Current Password" value={current} onChange={setCurrent} type="password" />
+          <Field label="New Password" value={next} onChange={setNext} type="password" />
+          <Field label="Confirm New Password" value={confirm} onChange={setConfirm} type="password" />
+          <button type="submit" className="primary-btn" disabled={loading}>
+            {loading ? 'Saving…' : 'Update Password'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
 
-/* ── Main Settings ────────────────────────────────────────────── */
 export default function Settings() {
-  const { ready: authReady, error: authError } = useAuth();
+  // Account and selected hive state
+  const { ready: authReady, user, error: authError } = useAuth();
+  const status = useHiveStatus('1d', { enabled: authReady && !authError });
+  const { selectedHive, selectedHiveId, setSelectedHiveId } = useSelectedHive(status.hives);
   const [localPrefs, setLocalPrefs] = useState(loadLocalPrefs);
   const [displayName, setDisplayName] = useState('');
   const [accountEmail, setAccountEmail] = useState('');
+  const [device, setDevice] = useState(null);
+  const [latestReading, setLatestReading] = useState(null);
+  const [deviceLoading, setDeviceLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [hiveThresholdSaving, setHiveThresholdSaving] = useState(false);
+  const [hiveThresholds, setHiveThresholds] = useState(() => thresholdStateFromHive(null, loadLocalPrefs()));
   const [toast, setToast] = useState(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [deviceId, setDeviceId] = useState(null);
-  const [deviceLastSeen, setDeviceLastSeen] = useState(null);
-  const [hiveInfo, setHiveInfo] = useState(null);
-  const [deviceLoading, setDeviceLoading] = useState(true);
 
-  const setLocalPref = (key, val) => setLocalPrefs(p => ({ ...p, [key]: val }));
+  const setLocalPref = (key, value) => setLocalPrefs(prev => ({ ...prev, [key]: value }));
+  const setHiveThreshold = (key, value) => setHiveThresholds(prev => ({ ...prev, [key]: value }));
+  const isDemoAccount =
+    import.meta.env.VITE_SHOW_DEMO_LOGIN === 'true' &&
+    import.meta.env.VITE_DEMO_USERNAME &&
+    user?.username === import.meta.env.VITE_DEMO_USERNAME;
 
+  // Load account defaults
   useEffect(() => {
-    if (!authReady || authError) { setDeviceLoading(false); return; }
-    async function load() {
+    if (!authReady || authError) return;
+    let cancelled = false;
+
+    async function loadAccount() {
       try {
-        const [meRes, hivesRes, devicesRes] = await Promise.allSettled([
-          apiFetch('/api/auth/me'), apiFetch('/api/hives'), apiFetch('/api/devices'),
-        ]);
-        if (meRes.status === 'fulfilled') {
-          const u = meRes.value?.user;
-          if (u) { setDisplayName(u.username || ''); setAccountEmail(u.email || ''); if (u.phone && !localPrefs.phoneNum) setLocalPref('phoneNum', u.phone); }
+        const res = await apiFetch('/api/auth/me');
+        if (!cancelled && res?.user) {
+          setDisplayName(res.user.username || '');
+          setAccountEmail(res.user.email || '');
+          setLocalPrefs(prev => prefsWithThresholds(prev, res.user));
         }
-        let hiveId = null;
-        if (hivesRes.status === 'fulfilled') {
-          const h = hivesRes.value?.hives ?? [];
-          if (h.length) { setHiveInfo(h[0]); hiveId = h[0].id; }
-        }
-        if (devicesRes.status === 'fulfilled') {
-          const d = devicesRes.value?.devices ?? [];
-          if (d.length) {
-            setDeviceId(d[0].id);
-            let lastSeen = d[0].last_seen_at;
-            // ingest doesn't call touchLastSeen, so check latest reading too
-            if (hiveId) {
-              try {
-                const latestRes = await apiFetch(`/api/readings/latest?hiveId=${hiveId}`);
-                const rt = latestRes?.reading?.received_at ?? latestRes?.reading?.bucket_at;
-                if (rt && (!lastSeen || new Date(rt) > new Date(lastSeen))) lastSeen = rt;
-              } catch {}
-            }
-            setDeviceLastSeen(lastSeen);
-            // One-time silent sync: push local defaults to backend if never done before
-            const syncKey = 'asheville_thresholds_synced_v1';
-            if (!localStorage.getItem(syncKey)) {
-              const p = loadLocalPrefs();
-              const cl = parseFloat(p.criticalLow);
-              const ch = parseFloat(p.criticalHigh);
-              const ol = parseFloat(p.optimalLow);
-              const oh = parseFloat(p.optimalHigh);
-              if (cl < ol && ol < oh && oh < ch) {
-                try {
-                  await apiFetch('/api/auth/alert-settings', {
-                    method: 'PATCH',
-                    body: JSON.stringify({
-                      alerts_enabled: true,
-                      warning_low_threshold: ol,
-                      warning_high_threshold: oh,
-                      critical_low_threshold: cl,
-                      critical_high_threshold: ch,
-                    }),
-                  });
-                  localStorage.setItem(syncKey, '1');
-                } catch (_) { /* non-fatal */ }
-              }
-            }
-          }
-        }
-      } catch {} finally { setDeviceLoading(false); }
+      } catch {
+        if (!cancelled) setToast({ msg: 'Could not load account profile.', ok: false });
+      }
     }
-    load();
+
+    loadAccount();
+    return () => { cancelled = true; };
   }, [authReady, authError]);
 
-  const showToast = (msg, ok = true) => { setToast({ msg, ok }); setTimeout(() => setToast(null), 2800); };
+  // Load selected hive device context
+  useEffect(() => {
+    const hiveId = Number(selectedHiveId);
+    if (!Number.isInteger(hiveId) || hiveId <= 0) {
+      setDevice(null);
+      setLatestReading(null);
+      return;
+    }
 
+    let cancelled = false;
+    async function loadHiveContext() {
+      setDeviceLoading(true);
+      try {
+        const [devicesRes, latestRes] = await Promise.allSettled([
+          getHiveDevices(hiveId),
+          getHiveLatestReading(hiveId),
+        ]);
+        if (!cancelled) {
+          const devices = devicesRes.status === 'fulfilled' ? (devicesRes.value?.devices ?? []) : [];
+          const matchingDevice = devices.find(item => Number(item.hive_id ?? item.hiveId) === hiveId) ?? devices.find(Boolean) ?? null;
+          setDevice(matchingDevice);
+          setLatestReading(latestRes.status === 'fulfilled' ? (latestRes.value?.reading ?? null) : null);
+        }
+      } finally {
+        if (!cancelled) setDeviceLoading(false);
+      }
+    }
+
+    loadHiveContext();
+    return () => { cancelled = true; };
+  }, [selectedHiveId]);
+
+  // Sync threshold inputs with hive data
+  useEffect(() => {
+    setHiveThresholds(thresholdStateFromHive(selectedHive, localPrefs));
+  }, [
+    selectedHiveId,
+    selectedHive?.warningLowThreshold,
+    selectedHive?.warningHighThreshold,
+    selectedHive?.criticalLowThreshold,
+    selectedHive?.criticalHighThreshold,
+    localPrefs.criticalLow,
+    localPrefs.criticalHigh,
+    localPrefs.optimalLow,
+    localPrefs.optimalHigh,
+  ]);
+
+  const showToast = (msg, ok = true) => {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 2800);
+  };
+
+  // Save global defaults
   const handleSave = async () => {
     setSaving(true);
-    const cl = parseFloat(localPrefs.criticalLow), ch = parseFloat(localPrefs.criticalHigh);
-    const ol = parseFloat(localPrefs.optimalLow), oh = parseFloat(localPrefs.optimalHigh);
 
-    if (isNaN(cl) || isNaN(ch) || isNaN(ol) || isNaN(oh)) {
-      showToast('All thresholds must be valid numbers.', false); setSaving(false); return;
-    }
-    if (cl >= ch) {
-      showToast('Critical low must be less than critical high.', false); setSaving(false); return;
-    }
-    if (ol >= oh) {
-      showToast('Warning low must be less than warning high.', false); setSaving(false); return;
-    }
-    if (ol <= cl || oh >= ch) {
-      showToast('Warning range must be strictly within the critical range.', false); setSaving(false); return;
+    let thresholds;
+    try {
+      thresholds = parseThresholds({
+        criticalLow: localPrefs.criticalLow,
+        warningLow: localPrefs.optimalLow,
+        warningHigh: localPrefs.optimalHigh,
+        criticalHigh: localPrefs.criticalHigh,
+      });
+    } catch (err) {
+      showToast(err.message, false);
+      setSaving(false);
+      return;
     }
 
     const toSave = { ...localPrefs, tempUnit: 'fahrenheit' };
@@ -256,211 +346,248 @@ export default function Settings() {
     setLocalPrefs(toSave);
 
     try {
-      await apiFetch('/api/auth/alert-settings', {
+      const res = await apiFetch('/api/auth/alert-settings', {
         method: 'PATCH',
         body: JSON.stringify({
           alerts_enabled: true,
-          warning_low_threshold: ol,
-          warning_high_threshold: oh,
-          critical_low_threshold: cl,
-          critical_high_threshold: ch,
+          warning_low_threshold: thresholds.warningLow,
+          warning_high_threshold: thresholds.warningHigh,
+          critical_low_threshold: thresholds.criticalLow,
+          critical_high_threshold: thresholds.criticalHigh,
         }),
       });
-      showToast('Settings saved successfully');
+      await status.refresh();
+      const count = res?.alert_settings?.propagated_hive_count;
+      showToast(Number.isFinite(Number(count)) ? `Global defaults saved and applied to ${count} active hives.` : 'Global alert defaults saved.');
     } catch (err) {
-      showToast(err.message || 'Alert settings update failed.', false);
+      showToast(friendlyApiMessage(err, 'Alert settings update failed.'), false);
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
   };
 
-  const isOnline = !!(deviceLastSeen && (Date.now() - new Date(deviceLastSeen).getTime()) < 30 * 60 * 1000);
-  const sensorId = deviceId != null ? String(deviceId) : '—';
-  const firmwareVersion = 'V.2.4.1';
+  // Save selected hive thresholds
+  const handleSaveHiveThresholds = async () => {
+    const hiveId = Number(selectedHiveId);
+    if (!Number.isInteger(hiveId) || hiveId <= 0) {
+      showToast('Choose a hive before saving hive thresholds.', false);
+      return;
+    }
 
-  const statusLabel = deviceLoading
-    ? '—'
-    : deviceId != null
-      ? (isOnline ? 'Online' : 'Offline')
-      : 'No Device';
-  const statusColor = isOnline ? '#22c55e' : '#94a3b8';
-  const statusBorder = isOnline ? '#22c55e' : '#e2e8f0';
-  const statusTextColor = isOnline ? '#16a34a' : '#64748b';
+    let thresholds;
+    try {
+      thresholds = parseThresholds(hiveThresholds);
+    } catch (err) {
+      showToast(err.message, false);
+      return;
+    }
 
-  const PersonIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
-  const BellIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>;
-  const ThermIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>;
-  const ShieldIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
-  const MailIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>;
+    setHiveThresholdSaving(true);
+    try {
+      await apiFetch(`/api/hives/${hiveId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          warning_low_threshold: thresholds.warningLow,
+          warning_high_threshold: thresholds.warningHigh,
+          critical_low_threshold: thresholds.criticalLow,
+          critical_high_threshold: thresholds.criticalHigh,
+        }),
+      });
+      await status.refresh();
+      showToast(`${selectedHiveName} thresholds saved.`);
+    } catch (err) {
+      showToast(friendlyApiMessage(err, 'Hive threshold update failed.'), false);
+    } finally {
+      setHiveThresholdSaving(false);
+    }
+  };
+
+  const selectedHiveName = selectedHive?.name || (selectedHiveId ? `Hive ${selectedHiveId}` : 'No hive selected');
+  const lastSeen = latestReading?.receivedAt || latestReading?.bucketAt || device?.last_seen_at || device?.lastSeenAt;
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#f0f2f5' }}>
+    <div className="app-shell">
       <Navigation />
-      {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} onSuccess={() => { setShowPasswordModal(false); showToast('Password updated'); }} />}
+      {showPasswordModal && (
+        <ChangePasswordModal
+          onClose={() => setShowPasswordModal(false)}
+          onSuccess={() => {
+            setShowPasswordModal(false);
+            showToast('Password updated.');
+          }}
+        />
+      )}
       {toast && (
-        <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 999, background: toast.ok ? '#1e2d4a' : '#ef4444', color: 'white', padding: '10px 18px', fontSize: '13px', fontWeight: 600, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', animation: 'fadeIn 0.2s ease' }}>
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          zIndex: 999,
+          background: toast.ok ? 'var(--surface-elevated)' : 'rgba(239,68,68,0.18)',
+          color: toast.ok ? 'var(--text-primary)' : '#fecaca',
+          border: `1px solid ${toast.ok ? 'var(--border)' : 'rgba(239,68,68,0.45)'}`,
+          borderRadius: '14px',
+          padding: '10px 14px',
+          fontSize: '13px',
+          fontWeight: 800,
+          boxShadow: 'var(--shadow-md)',
+        }}>
           {toast.msg}
         </div>
       )}
 
-      <main style={{ flex: 1, overflow: 'auto', minWidth: 0 }}>
-        {/* Top bar */}
-        <div className="mob-topbar-pad" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', borderBottom: '1px solid #e2e8f0', background: 'white' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <HamburgerBtn />
-            <span style={{ fontSize: '16px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Settings</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 500 }}>HIVE:</span>
-            <span style={{ fontSize: '13px', fontWeight: 800, color: '#1e2d4a' }}>
-              {hiveInfo ? `#${hiveInfo.id}` : '—'}
-            </span>
-            <span className="status-dot" style={{
-              width: '10px', height: '10px',
-              background: isOnline ? '#22c55e' : '#94a3b8',
-              display: 'inline-block',
-              borderRadius: '50%',
-              boxShadow: isOnline ? '0 0 0 3px rgba(34,197,94,0.2)' : 'none',
-            }} />
-          </div>
-        </div>
-
-        <div className="mob-pad" style={{ padding: '28px 32px' }}>
-          {/* Config header */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px', gap: '12px' }}>
+      <main className="page-main">
+        <div className="page-content">
+          <header className="page-header">
             <div>
-              <h1 style={{ fontSize: '22px', fontWeight: 800, color: '#1e2d4a', letterSpacing: '-0.01em' }}>Configuration</h1>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Manage Preferences &amp; Alerts</div>
+              <div className="page-title-row">
+                <HamburgerBtn />
+                <div className="page-kicker">Settings</div>
+              </div>
+              <h1>Configuration</h1>
+              <p className="page-subtitle">Manage account details, global alert defaults, and selected-hive device context.</p>
             </div>
-            <button onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', background: saving ? '#94a3b8' : '#1e2d4a', color: 'white', border: 'none', fontSize: '12px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', letterSpacing: '0.04em', textTransform: 'uppercase', flexShrink: 0 }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-              {saving ? 'Saving…' : 'Save Changes'}
+            <button type="button" className="primary-btn" onClick={handleSave} disabled={saving || isDemoAccount}>
+              {isDemoAccount ? 'Read-Only Demo' : saving ? 'Saving…' : 'Save Settings'}
             </button>
-          </div>
+          </header>
 
-          {/* Operator Profile */}
-          <SectionCard icon={<PersonIcon />} title="Operator Profile">
-            <div className="settings-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-              <Field label="Full Name" value={displayName} disabled />
-              <Field label="Role" value={localPrefs.role || 'Beekeeper'} onChange={v => setLocalPref('role', v)} />
-            </div>
-            <div className="settings-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <Field label="Email Address" value={accountEmail} disabled />
-              {/* <Field label="Phone Number" value={localPrefs.phoneNum || ''} onChange={v => setLocalPref('phoneNum', v)} /> */}
-            </div>
-            <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #f1f5f9' }}>
-              <button onClick={() => setShowPasswordModal(true)} style={{ background: 'none', border: 'none', color: '#f5a623', fontSize: '13px', fontWeight: 700, cursor: 'pointer', padding: 0, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                Change Password →
-              </button>
-            </div>
-          </SectionCard>
-
-          {/* Notifications */}
-          <SectionCard icon={<BellIcon />} title="Notifications">
-            <ToggleRow
-              icon={<MailIcon />}
-              label="Email Digests"
-              description="Receive daily summary reports via email."
-              checked={localPrefs.enableEmail}
-              onChange={v => setLocalPref('enableEmail', v)}
-              activeColor="#1e2d4a"
-            />
-          </SectionCard>
-
-          {/* Sensor Thresholds */}
-          <SectionCard icon={<ThermIcon />} title="Sensor Thresholds">
-            <div className="threshold-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', marginBottom: '28px' }}>
-              <ThresholdSlider
-                label="Min Internal Temp"
-                value={localPrefs.criticalLow}
-                min={60} max={110}
-                onChange={v => setLocalPref('criticalLow', v)}
-                color="#1e2d4a"
-                alertText="Alert triggers when core temperature drops below this value."
-              />
-              <ThresholdSlider
-                label="Max Internal Temp"
-                value={localPrefs.criticalHigh}
-                min={90} max={140}
-                onChange={v => setLocalPref('criticalHigh', v)}
-                color="#f5a623"
-                alertText="Alert triggers when core temperature exceeds this value."
-              />
-            </div>
-            <div className="threshold-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
-              <ThresholdSlider
-                label="Warning Range Low"
-                value={localPrefs.optimalLow}
-                min={60} max={110}
-                onChange={v => setLocalPref('optimalLow', v)}
-                color="#3b82f6"
-                alertText="Warning triggered when temperature falls below warning range."
-              />
-              <ThresholdSlider
-                label="Warning Range High"
-                value={localPrefs.optimalHigh}
-                min={90} max={140}
-                onChange={v => setLocalPref('optimalHigh', v)}
-                color="#3b82f6"
-                alertText="Warning triggered when temperature rises above warning range."
-              />
-            </div>
-          </SectionCard>
-
-          {/* System Information */}
-          <div style={{ background: 'white', border: '1px solid #e2e8f0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '18px 24px', borderBottom: '1px solid #f1f5f9' }}>
-              <span style={{ color: '#94a3b8' }}><ShieldIcon /></span>
-              <span style={{ fontSize: '12px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase' }}>System Information</span>
-            </div>
-            <div className="settings-sysinfo-grid" style={{ padding: '20px 24px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px' }}>
-              <div>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Firmware Ver.</div>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: '#1e2d4a' }}>{firmwareVersion}</div>
-              </div>
-
-              <div>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Last Sync</div>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: '#1e2d4a' }}>
-                  {deviceLoading ? '—' : timeAgo(deviceLastSeen)}
+          {authError ? (
+            <ErrorState message="Authentication required." />
+          ) : (
+            <>
+              {/* Read-only notice */}
+              {isDemoAccount && (
+                <div className="analytics-card" style={{ padding: '14px 16px', marginBottom: '18px', borderColor: 'rgba(245,185,66,0.35)', color: 'var(--text-secondary)' }}>
+                  <strong style={{ color: 'var(--amber)' }}>Demo account:</strong> settings are read-only so shared demo data stays intact.
                 </div>
-              </div>
+              )}
 
-              <div>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Sensor ID</div>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: '#1e2d4a' }}>
-                  {deviceLoading ? '—' : sensorId}
+              {/* Project overview */}
+              <DashboardSection title="About BeeKeepr" eyebrow="Project">
+                <div className="analytics-card" style={{ padding: '18px', color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.65 }}>
+                  BeeKeepr is a hive monitoring system built to help beekeepers track hive conditions, identify temperature issues, and review long-term colony trends from a central dashboard. The system combines physical sensor hardware, ESP32-based device logic, LoRa communication, backend data ingestion, PostgreSQL storage, alerting, external weather context, analytics, and operational visualizations.
+
+                  Each hive is designed to use a temperature sensor connected to an ESP32 board. The ESP32 reads the hive temperature at regular intervals, formats the reading, and sends it wirelessly through a LoRa module. LoRa allows the device to transmit data over longer distances while using low power, which makes it useful for outdoor hive environments where Wi-Fi may be unreliable or unavailable. This allows hive data to be collected from the field without requiring each hive to have a direct internet connection.
+
+                  On the software side, the backend receives the sensor readings, stores them in PostgreSQL using time-based reading buckets, checks each reading against warning and critical temperature thresholds, and makes the data available to the dashboard. BeeKeepr also supports multiple hives, multiple locations, hive-specific alert thresholds, historical analytics, CSV export, and external weather comparisons so users can understand both individual hive behavior and broader environmental conditions.
                 </div>
-              </div>
+              </DashboardSection>
 
-              <div>
-                <div style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Status</div>
-                {deviceLoading ? (
-                  <div style={{ fontSize: '14px', fontWeight: 600, color: '#94a3b8' }}>—</div>
+              {/* Account details */}
+              <DashboardSection title="Account" eyebrow="Profile">
+                <div className="analytics-card" style={{ padding: '18px' }}>
+                  <div className="settings-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                    <Field label="Full Name" value={displayName} disabled />
+                    <Field label="Role" value={localPrefs.role || 'Beekeeper'} onChange={value => setLocalPref('role', value)} />
+                    <Field label="Email Address" value={accountEmail} disabled />
+                    <div style={{ display: 'flex', alignItems: 'end' }}>
+                      <button type="button" className="ghost-btn" onClick={() => setShowPasswordModal(true)} disabled={isDemoAccount}>
+                        Change Password
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </DashboardSection>
+
+              {/* Global defaults */}
+              <DashboardSection title="Global Alert Defaults" eyebrow="Defaults">
+                <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '12px' }}>
+                  Global defaults apply to all active hives when saved. Individual hive thresholds can be adjusted afterward in the per-hive editor below.
+                </div>
+                <div className="stat-grid">
+                  <ThresholdInput label="Critical Low" value={localPrefs.criticalLow} onChange={value => setLocalPref('criticalLow', value)} tone="var(--error)" />
+                  <ThresholdInput label="Warning Low" value={localPrefs.optimalLow} onChange={value => setLocalPref('optimalLow', value)} tone="var(--warning)" />
+                  <ThresholdInput label="Warning High" value={localPrefs.optimalHigh} onChange={value => setLocalPref('optimalHigh', value)} tone="var(--warning)" />
+                  <ThresholdInput label="Critical High" value={localPrefs.criticalHigh} onChange={value => setLocalPref('criticalHigh', value)} tone="var(--error)" />
+                </div>
+              </DashboardSection>
+
+              {/* Per-hive thresholds */}
+              <DashboardSection
+                title="Hive Alert Thresholds"
+                eyebrow="Per-Hive"
+                action={
+                  <HiveSelector
+                    hives={status.hives}
+                    selectedHiveId={selectedHiveId}
+                    onChange={setSelectedHiveId}
+                    compact
+                  />
+                }
+              >
+                <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '12px' }}>
+                  These values update only the selected hive. Valid order is critical low, warning low, warning high, critical high.
+                </div>
+                {status.loading ? (
+                  <LoadingState label="Loading hive thresholds…" />
+                ) : status.error ? (
+                  <ErrorState message={status.error} />
+                ) : !selectedHive ? (
+                  <div className="analytics-card" style={{ padding: '18px', color: 'var(--text-secondary)' }}>
+                    Choose a hive to edit its thresholds.
+                  </div>
                 ) : (
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '5px',
-                    padding: '3px 10px',
-                    border: `1px solid ${statusBorder}`,
-                    fontSize: '11px', fontWeight: 700,
-                    color: statusTextColor,
-                    letterSpacing: '0.06em', textTransform: 'uppercase',
-                  }}>
-                    {deviceId != null && (
-                      <span style={{
-                        width: '6px', height: '6px',
-                        background: statusColor,
-                        display: 'inline-block',
-                        borderRadius: '50%',
-                        flexShrink: 0,
-                      }} />
-                    )}
-                    {statusLabel}
-                  </span>
+                  <div className="analytics-card" style={{ padding: '18px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                      <div>
+                        <div style={{ color: 'var(--text-primary)', fontSize: '15px', fontWeight: 850 }}>{selectedHiveName}</div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
+                          Hive ID #{getHiveId(selectedHive)} · {selectedHive.locationName || 'No location'}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="primary-btn"
+                        onClick={handleSaveHiveThresholds}
+                        disabled={hiveThresholdSaving || isDemoAccount}
+                      >
+                        {isDemoAccount ? 'Read-Only Demo' : hiveThresholdSaving ? 'Saving…' : 'Save Hive Thresholds'}
+                      </button>
+                    </div>
+                    <div className="stat-grid">
+                      <ThresholdInput label="Critical Low" value={hiveThresholds.criticalLow} onChange={value => setHiveThreshold('criticalLow', value)} tone="var(--error)" disabled={isDemoAccount} />
+                      <ThresholdInput label="Warning Low" value={hiveThresholds.warningLow} onChange={value => setHiveThreshold('warningLow', value)} tone="var(--warning)" disabled={isDemoAccount} />
+                      <ThresholdInput label="Warning High" value={hiveThresholds.warningHigh} onChange={value => setHiveThreshold('warningHigh', value)} tone="var(--warning)" disabled={isDemoAccount} />
+                      <ThresholdInput label="Critical High" value={hiveThresholds.criticalHigh} onChange={value => setHiveThreshold('criticalHigh', value)} tone="var(--error)" disabled={isDemoAccount} />
+                    </div>
+                  </div>
                 )}
-              </div>
-            </div>
-          </div>
+              </DashboardSection>
+
+              {/* Selected hive context */}
+              <DashboardSection
+                title="Selected Hive Context"
+                eyebrow="Device"
+                action={
+                  <HiveSelector
+                    hives={status.hives}
+                    selectedHiveId={selectedHiveId}
+                    onChange={setSelectedHiveId}
+                    compact
+                  />
+                }
+              >
+                {status.loading || deviceLoading ? (
+                  <LoadingState label="Loading hive device context…" />
+                ) : status.error ? (
+                  <ErrorState message={status.error} />
+                ) : (
+                  <div className="stat-grid">
+                    <StatCard label="Selected Hive" value={selectedHiveName} detail={selectedHive?.locationName || 'No location'} />
+                    <StatCard label="Hive Health" value={selectedHive?.healthStatus || '—'} detail={selectedHive?.status || 'No status'} />
+                    <StatCard label="Device ID" value={device?.id ? `#${device.id}` : '—'} detail={device ? 'One device per hive' : 'No device registered'} />
+                    <StatCard label="Last Reading" value={formatDateTime(lastSeen)} detail={formatTemperature(latestReading?.temperature)} />
+                  </div>
+                )}
+                {selectedHive && (
+                  <div style={{ marginTop: '14px' }}>
+                    <StatusBadge status={selectedHive.healthStatus} />
+                  </div>
+                )}
+              </DashboardSection>
+            </>
+          )}
         </div>
       </main>
     </div>

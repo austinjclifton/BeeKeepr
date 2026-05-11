@@ -1,5 +1,5 @@
 {
-  "name": "asheville-backend",
+  "name": "beekeepr-backend",
   "version": "1.0.0",
   "private": true,
   "main": "src/server.js",
@@ -16,6 +16,7 @@
     "mysql": "^2.18.1",
     "mysql2": "^3.16.2",
     "pg": "^8.20.0",
+    "resend": "^6.12.3",
     "swagger-ui-express": "^5.0.1",
     "yaml": "^2.8.2"
   },

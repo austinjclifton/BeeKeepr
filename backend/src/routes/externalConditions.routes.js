@@ -4,6 +4,10 @@ const express = require("express");
 const router = express.Router();
 
 const { requireAuth } = require("../middleware/requireAuth.js");
+const { requireCsrf } = require("../middleware/requireCsrf.js");
+const {
+  requireWritableAccount,
+} = require("../middleware/requireWritableAccount.js");
 const externalConditionsController = require("../controllers/externalConditions.controller.js");
 
 /**
@@ -25,6 +29,12 @@ router.get("/since", requireAuth, externalConditionsController.sinceForHive);
  * Triggers an external fetch+upsert for a hive on a successful ingest
  * Query: hiveId=123
  */
-router.post("/fetch", requireAuth, externalConditionsController.fetchForHive);
+router.post(
+  "/fetch",
+  requireAuth,
+  requireCsrf,
+  requireWritableAccount,
+  externalConditionsController.fetchForHive,
+);
 
 module.exports = router;

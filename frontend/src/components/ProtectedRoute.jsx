@@ -1,24 +1,31 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { apiFetch, setCsrfToken } from '../api';
+import {
+  apiFetch,
+  getCsrfToken,
+  getCurrentUser,
+  setCsrfToken,
+  setCurrentUser,
+} from '../api';
 
-/**
- * ProtectedRoute — wraps any authenticated page.
- * If the session cookie is invalid/expired, redirects to login.
- */
+/* Guard authenticated pages */
 export default function ProtectedRoute({ children }) {
-  const [status, setStatus] = useState('loading'); // 'loading' | 'ok' | 'unauth'
+  const hasCachedAuth = Boolean(getCurrentUser() && getCsrfToken());
+  const [status, setStatus] = useState(hasCachedAuth ? 'ok' : 'loading');
 
   useEffect(() => {
+    if (hasCachedAuth) return undefined;
+
     let cancelled = false;
     async function check() {
       try {
-        const [csrfRes] = await Promise.all([
+        const [csrfRes, meRes] = await Promise.all([
           apiFetch('/api/auth/csrf'),
           apiFetch('/api/auth/me'),
         ]);
         if (cancelled) return;
         setCsrfToken(csrfRes.csrfToken);
+        setCurrentUser(meRes.user);
         setStatus('ok');
       } catch {
         if (!cancelled) setStatus('unauth');
@@ -26,19 +33,21 @@ export default function ProtectedRoute({ children }) {
     }
     check();
     return () => { cancelled = true; };
-  }, []);
+  }, [hasCachedAuth]);
 
+  /* Hold the route until auth resolves */
   if (status === 'loading') {
     return (
       <div style={{
         minHeight: '100vh', display: 'flex', alignItems: 'center',
-        justifyContent: 'center', background: '#f0f2f5',
+        justifyContent: 'center', background: 'var(--bg)',
       }}>
-        <div style={{ color: '#94a3b8', fontSize: '14px', fontWeight: 500 }}>Loading…</div>
+        <div style={{ color: 'var(--text-secondary)', fontSize: '14px', fontWeight: 700 }}>Loading…</div>
       </div>
     );
   }
 
+  /* Redirect expired sessions */
   if (status === 'unauth') {
     return <Navigate to="/" replace />;
   }

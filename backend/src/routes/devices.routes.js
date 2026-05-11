@@ -5,6 +5,9 @@ const router = express.Router();
 
 const { requireAuth } = require("../middleware/requireAuth.js");
 const { requireCsrf } = require("../middleware/requireCsrf.js");
+const {
+  requireWritableAccount,
+} = require("../middleware/requireWritableAccount.js");
 const devicesController = require("../controllers/devices.controller.js");
 
 /**
@@ -23,12 +26,18 @@ router.get("/:id", requireAuth, devicesController.getById);
  * POST /api/devices/:id/last-seen
  * Updates the last-seen timestamp for a device by its Id
  */
-router.post("/:id/last-seen", requireAuth, devicesController.touchLastSeen);
+router.post(
+  "/:id/last-seen",
+  requireAuth,
+  requireCsrf,
+  requireWritableAccount,
+  devicesController.touchLastSeen,
+);
 
 /**
  * DELETE /api/devices/:id
  * Deletes a device by its Id
  */
-router.delete("/:id", requireAuth, requireCsrf, devicesController.remove);
+router.delete("/:id", requireAuth, requireCsrf, requireWritableAccount, devicesController.remove);
 
 module.exports = router;

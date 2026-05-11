@@ -48,9 +48,9 @@ function baseUsersRepo() {
 
 function baseResetRepo() {
   return {
-    createOrReplace: async () => ({ user_id: 1 }),
+    createOrReplace: async () => ({ beekeeper_id: 1 }),
     findByTokenHash: async () => null,
-    deleteForUser: async () => true,
+    markConsumedForBeekeeper: async () => true,
   };
 }
 
@@ -98,7 +98,7 @@ test("requestResetForEmail no-ops for unknown email", async () => {
   assert.equal(resetCalled, false);
 });
 
-test("requestResetForEmail creates hashed token for known user", async () => {
+test("requestResetForEmail creates hashed token for known beekeeper", async () => {
   let captured = null;
   const usersRepo = baseUsersRepo();
   usersRepo.findByEmail = async () => ({ id: 42 });
@@ -106,7 +106,7 @@ test("requestResetForEmail creates hashed token for known user", async () => {
   const resetRepo = baseResetRepo();
   resetRepo.createOrReplace = async (input) => {
     captured = input;
-    return { user_id: input.userId };
+    return { beekeeper_id: input.beekeeperId };
   };
 
   const service = buildService({
@@ -115,7 +115,7 @@ test("requestResetForEmail creates hashed token for known user", async () => {
   });
   await service.requestResetForEmail({ email: "beek@example.com" });
 
-  assert.equal(captured.userId, 42);
+  assert.equal(captured.beekeeperId, 42);
   assert.equal(typeof captured.tokenHash, "string");
   assert.equal(captured.tokenHash.length, 64);
   assert.ok(captured.expiresAt instanceof Date);
@@ -158,7 +158,7 @@ test("verifyResetToken returns null when token hash not found", async () => {
 test("verifyResetToken returns null for expired tokens", async () => {
   const resetRepo = baseResetRepo();
   resetRepo.findByTokenHash = async () => ({
-    user_id: 7,
+    beekeeper_id: 7,
     expires_at: new Date(Date.now() - 60_000).toISOString(),
   });
 
@@ -171,10 +171,27 @@ test("verifyResetToken returns null for expired tokens", async () => {
   assert.equal(result, null);
 });
 
-test("verifyResetToken returns userId for active token", async () => {
+test("verifyResetToken returns null for consumed tokens", async () => {
   const resetRepo = baseResetRepo();
   resetRepo.findByTokenHash = async () => ({
-    user_id: 99,
+    beekeeper_id: 7,
+    expires_at: new Date(Date.now() + 60_000).toISOString(),
+    consumed_at: new Date().toISOString(),
+  });
+
+  const service = buildService({
+    usersRepoStubs: baseUsersRepo(),
+    resetRepoStubs: resetRepo,
+  });
+
+  const result = await service.verifyResetToken({ rawToken: "abc123" });
+  assert.equal(result, null);
+});
+
+test("verifyResetToken returns beekeeperId for active token", async () => {
+  const resetRepo = baseResetRepo();
+  resetRepo.findByTokenHash = async () => ({
+    beekeeper_id: 99,
     expires_at: new Date(Date.now() + 60_000).toISOString(),
   });
 
@@ -184,26 +201,26 @@ test("verifyResetToken returns userId for active token", async () => {
   });
 
   const result = await service.verifyResetToken({ rawToken: "abc123" });
-  assert.deepEqual(result, { userId: 99 });
+  assert.deepEqual(result, { beekeeperId: 99 });
 });
 
-test("consumeResetTokenForUser validates userId", async () => {
+test("consumeResetTokenForBeekeeper validates beekeeperId", async () => {
   const service = buildService({
     usersRepoStubs: baseUsersRepo(),
     resetRepoStubs: baseResetRepo(),
   });
 
   await assert.rejects(
-    () => service.consumeResetTokenForUser({ userId: 0 }),
-    (err) => err.status === 400 && err.message === "Invalid userId",
+    () => service.consumeResetTokenForBeekeeper({ beekeeperId: 0 }),
+    (err) => err.status === 400 && err.message === "Invalid beekeeperId",
   );
 });
 
-test("consumeResetTokenForUser deletes token row", async () => {
+test("consumeResetTokenForBeekeeper marks token consumed", async () => {
   const calls = [];
   const resetRepo = baseResetRepo();
-  resetRepo.deleteForUser = async ({ userId }) => {
-    calls.push(userId);
+  resetRepo.markConsumedForBeekeeper = async ({ beekeeperId }) => {
+    calls.push(beekeeperId);
     return true;
   };
 
@@ -212,6 +229,6 @@ test("consumeResetTokenForUser deletes token row", async () => {
     resetRepoStubs: resetRepo,
   });
 
-  await service.consumeResetTokenForUser({ userId: 17 });
+  await service.consumeResetTokenForBeekeeper({ beekeeperId: 17 });
   assert.deepEqual(calls, [17]);
 });

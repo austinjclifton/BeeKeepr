@@ -21,18 +21,35 @@ function parsePort(value, fallback) {
   return i;
 }
 
-const pool = new Pool({
-  host: requireEnv("DB_HOST"),
-  port: parsePort(process.env.DB_PORT, 5432),
-  user: requireEnv("DB_USER"),
-  password: requireEnv("DB_PASSWORD"),
-  database: requireEnv("DB_NAME"),
+function buildPoolConfig() {
+  const databaseUrl = process.env.DATABASE_URL;
 
-  // Production-safe defaults (tune per deployment)
-  max: 10,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 5_000,
-});
+  if (typeof databaseUrl === "string" && databaseUrl.trim()) {
+    return {
+      connectionString: databaseUrl,
+      ...poolDefaults(),
+    };
+  }
+
+  return {
+    host: requireEnv("DB_HOST"),
+    port: parsePort(process.env.DB_PORT, 5432),
+    user: requireEnv("DB_USER"),
+    password: requireEnv("DB_PASSWORD"),
+    database: requireEnv("DB_NAME"),
+    ...poolDefaults(),
+  };
+}
+
+function poolDefaults() {
+  return {
+    max: 10,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 5_000,
+  };
+}
+
+const pool = new Pool(buildPoolConfig());
 
 /* ========================================================================== */
 /* Public API                                                                  */

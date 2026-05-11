@@ -4,6 +4,7 @@ const crypto = require("crypto");
 
 const usersRepo = require("../db/users.db.js");
 const passwordResetRepo = require("../db/passwordReset.db.js");
+const { isDemoAccountUser } = require("../utils/demoAccount.js");
 
 /* ========================================================================== */
 /* Config                                                                      */
@@ -29,7 +30,11 @@ exports.requestResetForEmail = async ({ email }) => {
     return;
   }
 
-  const rawToken = await createResetToken({ userId: Number(user.id) });
+  if (isDemoAccountUser(user)) {
+    return;
+  }
+
+  const rawToken = await createResetToken({ beekeeperId: Number(user.id) });
 
   // Non-production convenience to test flows without email delivery
   if (process.env.NODE_ENV !== "production") {
@@ -48,29 +53,30 @@ exports.verifyResetToken = async ({ rawToken }) => {
   const row = await passwordResetRepo.findByTokenHash({ tokenHash });
 
   if (!row) return null;
+  if (row.consumed_at) return null;
   if (isExpired(row.expires_at)) return null;
 
-  return { userId: Number(row.user_id) };
+  return { beekeeperId: Number(row.beekeeper_id) };
 };
 
-exports.consumeResetTokenForUser = async ({ userId }) => {
-  assertPositiveInt(userId, "userId");
-  await passwordResetRepo.deleteForUser({ userId });
+exports.consumeResetTokenForBeekeeper = async ({ beekeeperId }) => {
+  assertPositiveInt(beekeeperId, "beekeeperId");
+  await passwordResetRepo.markConsumedForBeekeeper({ beekeeperId });
 };
 
 /* ========================================================================== */
 /* Token lifecycle                                                             */
 /* ========================================================================== */
 
-async function createResetToken({ userId }) {
-  assertPositiveInt(userId, "userId");
+async function createResetToken({ beekeeperId }) {
+  assertPositiveInt(beekeeperId, "beekeeperId");
 
   const rawToken = generateToken();
   const tokenHash = hashToken(rawToken);
   const expiresAt = new Date(now().getTime() + TOKEN_TTL_MS);
 
   await passwordResetRepo.createOrReplace({
-    userId,
+    beekeeperId,
     tokenHash,
     expiresAt,
   });

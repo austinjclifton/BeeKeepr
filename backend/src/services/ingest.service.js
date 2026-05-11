@@ -24,11 +24,7 @@ exports.createReading = async ({ deviceId, temperature, rssi }) => {
     throw badRequest(`rssi must be between ${RSSI_MIN} and ${RSSI_MAX}`);
   }
 
-  // Keep this nearby for when bucketed ingest dedupe is restored
-  //const bucketAt = floorToTenMinutes(new Date()).toISOString();
-
-  // For now each request uses its own timestamp as bucket_at
-  const bucketAt = new Date().toISOString();
+  const bucketAt = floorToTenMinutes(new Date()).toISOString();
 
   const { inserted, reading } = await ingestRepo.createReadingDeduped10m({
     deviceId: deviceId,
