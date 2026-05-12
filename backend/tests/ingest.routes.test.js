@@ -116,9 +116,11 @@ test("POST /ingest/readings accepts Bearer token and returns 409 for duplicate b
   );
 });
 
-test("POST /ingest/readings returns 401 for invalid token when INGEST_SECRET is set", async () => {
-  const prior = process.env.INGEST_SECRET;
-  process.env.INGEST_SECRET = "expected-token";
+test("POST /ingest/readings returns 401 for invalid token when INGEST_TOKEN is set", async () => {
+  const priorToken = process.env.INGEST_TOKEN;
+  const priorSecret = process.env.INGEST_SECRET;
+  process.env.INGEST_TOKEN = "expected-token";
+  delete process.env.INGEST_SECRET;
 
   try {
     const app = buildTestApp({
@@ -133,8 +135,11 @@ test("POST /ingest/readings returns 401 for invalid token when INGEST_SECRET is 
 
     assert.equal(res.body.error, "Invalid ingest token");
   } finally {
-    if (prior === undefined) delete process.env.INGEST_SECRET;
-    else process.env.INGEST_SECRET = prior;
+    if (priorToken === undefined) delete process.env.INGEST_TOKEN;
+    else process.env.INGEST_TOKEN = priorToken;
+
+    if (priorSecret === undefined) delete process.env.INGEST_SECRET;
+    else process.env.INGEST_SECRET = priorSecret;
   }
 });
 

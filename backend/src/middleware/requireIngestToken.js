@@ -5,7 +5,8 @@
  * - Accepts token via:
  *   - x-ingest-token: <token>
  *   - Authorization: Bearer <token>
- * - If INGEST_SECRET is set, token must match.
+ * - If INGEST_TOKEN is set, token must match
+ * - INGEST_SECRET remains a legacy fallback
  * - Attaches req.ingestToken for downstream usage (optional).
  */
 
@@ -18,7 +19,7 @@ module.exports.requireIngestToken = function requireIngestToken(req, res, next) 
       return next(httpError(401, "UNAUTHORIZED", "ingest token is required"));
     }
 
-    const secret = process.env.INGEST_SECRET || null;
+    const secret = getConfiguredIngestToken();
     if (secret && !timingSafeEqualStr(token, secret)) {
       return next(httpError(401, "UNAUTHORIZED", "Invalid ingest token"));
     }
@@ -47,6 +48,20 @@ function extractIngestToken(req) {
   }
 
   return null;
+}
+
+function getConfiguredIngestToken() {
+  const primary = normalizeConfiguredToken(process.env.INGEST_TOKEN);
+  if (primary) return primary;
+
+  return normalizeConfiguredToken(process.env.INGEST_SECRET);
+}
+
+function normalizeConfiguredToken(value) {
+  if (typeof value !== "string") return null;
+
+  const normalized = value.trim();
+  return normalized || null;
 }
 
 function timingSafeEqualStr(a, b) {

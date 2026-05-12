@@ -20,7 +20,9 @@ const { SESSION_COOKIE_NAME } = require("../utils/sessionCookie.js");
 
 exports.requireAuth = async (req, res, next) => {
   try {
-    const sessionToken = req.cookies?.[SESSION_COOKIE_NAME];
+    const sessionToken =
+      req.signedCookies?.[SESSION_COOKIE_NAME] ??
+      req.cookies?.[SESSION_COOKIE_NAME];
     if (!sessionToken) {
       return res.status(401).json({ error: "Authentication required" });
     }

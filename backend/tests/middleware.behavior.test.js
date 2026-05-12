@@ -30,7 +30,7 @@ function clearRequireCache(paths) {
   for (const p of paths) delete require.cache[p];
 }
 
-function buildRequireAuthApp({ validateSessionImpl }) {
+function buildRequireAuthApp({ validateSessionImpl, signedCookies }) {
   clearRequireCache([requireAuthPath, sessionsServicePath, sessionCookiePath]);
 
   require.cache[sessionsServicePath] = {
@@ -55,6 +55,12 @@ function buildRequireAuthApp({ validateSessionImpl }) {
 
   const app = express();
   app.use(cookieParser());
+  if (signedCookies) {
+    app.use((req, res, next) => {
+      req.signedCookies = { ...signedCookies };
+      next();
+    });
+  }
   app.get("/protected", requireAuth, (req, res) => {
     res.status(200).json({
       user: req.user,
@@ -158,6 +164,27 @@ test("requireAuth sets req.user and req.session and calls next", async () => {
   assert.equal(res.body.sessionToken, "good-token");
 });
 
+test("requireAuth accepts signed session cookies", async () => {
+  const app = buildRequireAuthApp({
+    validateSessionImpl: async ({ sessionToken }) => ({
+      user: { id: 9, username: "signed" },
+      session: {
+        sessionToken,
+        csrfToken: "csrf-9",
+        expiresAt: "2026-04-01T00:00:00.000Z",
+      },
+    }),
+    signedCookies: {
+      sessionId: "signed-token",
+    },
+  });
+
+  const res = await request(app).get("/protected").expect(200);
+
+  assert.equal(res.body.user.id, 9);
+  assert.equal(res.body.sessionToken, "signed-token");
+});
+
 test("requireCsrf allows matching token", async () => {
   const app = buildRequireCsrfApp();
 
@@ -208,9 +235,11 @@ test("requireIngestToken rejects missing token", async () => {
   assert.equal(res.body.error, "ingest token is required");
 });
 
-test("requireIngestToken enforces INGEST_SECRET when configured", async () => {
-  const prior = process.env.INGEST_SECRET;
-  process.env.INGEST_SECRET = "secret-token";
+test("requireIngestToken enforces INGEST_TOKEN when configured", async () => {
+  const priorToken = process.env.INGEST_TOKEN;
+  const priorSecret = process.env.INGEST_SECRET;
+  process.env.INGEST_TOKEN = "secret-token";
+  delete process.env.INGEST_SECRET;
 
   try {
     const app = buildRequireIngestTokenApp();
@@ -229,8 +258,35 @@ test("requireIngestToken enforces INGEST_SECRET when configured", async () => {
 
     assert.equal(good.body.token, "secret-token");
   } finally {
-    if (prior === undefined) delete process.env.INGEST_SECRET;
-    else process.env.INGEST_SECRET = prior;
+    if (priorToken === undefined) delete process.env.INGEST_TOKEN;
+    else process.env.INGEST_TOKEN = priorToken;
+
+    if (priorSecret === undefined) delete process.env.INGEST_SECRET;
+    else process.env.INGEST_SECRET = priorSecret;
+  }
+});
+
+test("requireIngestToken falls back to legacy INGEST_SECRET", async () => {
+  const priorToken = process.env.INGEST_TOKEN;
+  const priorSecret = process.env.INGEST_SECRET;
+  delete process.env.INGEST_TOKEN;
+  process.env.INGEST_SECRET = "legacy-secret";
+
+  try {
+    const app = buildRequireIngestTokenApp();
+
+    const good = await request(app)
+      .post("/ingest")
+      .set("x-ingest-token", "legacy-secret")
+      .expect(200);
+
+    assert.equal(good.body.token, "legacy-secret");
+  } finally {
+    if (priorToken === undefined) delete process.env.INGEST_TOKEN;
+    else process.env.INGEST_TOKEN = priorToken;
+
+    if (priorSecret === undefined) delete process.env.INGEST_SECRET;
+    else process.env.INGEST_SECRET = priorSecret;
   }
 });
 

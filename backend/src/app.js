@@ -14,6 +14,7 @@
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
+const fs = require("fs");
 const path = require("path");
 
 // ----- Route Imports -----
@@ -30,17 +31,21 @@ const analyticsRoutes = require("./routes/analytics.routes.js");
 
 // ----- Swagger -----
 const { setupSwagger } = require("./utils/swagger.js");
+const { getSessionSecret } = require("./utils/sessionCookie.js");
 
 const app = express();
 const frontendDistPath = path.resolve(__dirname, "../../frontend/dist");
 const isProduction = process.env.NODE_ENV === "production";
 const allowedCorsOrigins = getAllowedCorsOrigins();
+const shouldServeFrontend = fs.existsSync(frontendDistPath);
 
 /* ================================================================
  * Global Middleware
  * ================================================================ */
 
-app.set("trust proxy", 1);
+if (isProduction) {
+  app.set("trust proxy", 1);
+}
 
 app.use(express.json());
 
@@ -56,7 +61,7 @@ app.use(
   }),
 );
 
-app.use(cookieParser());
+app.use(cookieParser(getSessionSecret() || undefined));
 
 /* ================================================================
  * API Routes
@@ -84,19 +89,21 @@ setupSwagger(app);
  * Frontend Static Build
  * ================================================================ */
 
-app.use(express.static(frontendDistPath));
+if (shouldServeFrontend) {
+  app.use(express.static(frontendDistPath));
 
-app.get("*", (req, res, next) => {
-  if (
-    req.path.startsWith("/api") ||
-    req.path.startsWith("/ingest") ||
-    req.path.startsWith("/docs")
-  ) {
-    return next();
-  }
+  app.get("*", (req, res, next) => {
+    if (
+      req.path.startsWith("/api") ||
+      req.path.startsWith("/ingest") ||
+      req.path.startsWith("/docs")
+    ) {
+      return next();
+    }
 
-  return res.sendFile(path.join(frontendDistPath, "index.html"));
-});
+    return res.sendFile(path.join(frontendDistPath, "index.html"));
+  });
+}
 
 /* ================================================================
  * Error Handling

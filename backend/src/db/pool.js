@@ -21,13 +21,98 @@ function parsePort(value, fallback) {
   return i;
 }
 
+function parseOptionalBoolean(value) {
+  if (value === undefined || value === null || value === "") return null;
+
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === "true") return true;
+  if (normalized === "false") return false;
+  return null;
+}
+
+function resolveSslMode() {
+  return (
+    normalizeSslMode(process.env.PGSSLMODE) ||
+    parseSslModeFromConnectionString(process.env.DATABASE_URL)
+  );
+}
+
+function parseSslModeFromConnectionString(connectionString) {
+  if (typeof connectionString !== "string" || !connectionString.trim()) {
+    return null;
+  }
+
+  try {
+    const url = new URL(connectionString);
+    return normalizeSslMode(url.searchParams.get("sslmode"));
+  } catch {
+    return null;
+  }
+}
+
+function normalizeSslMode(value) {
+  if (typeof value !== "string") return null;
+
+  const normalized = value.trim().toLowerCase();
+  if (
+    ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"].includes(
+      normalized,
+    )
+  ) {
+    return normalized;
+  }
+
+  return null;
+}
+
+function normalizeMultilineValue(value) {
+  if (typeof value !== "string") return null;
+
+  const normalized = value.trim();
+  if (!normalized) return null;
+
+  return normalized.replace(/\\n/g, "\n");
+}
+
+function buildSslConfig() {
+  const explicitSsl = parseOptionalBoolean(process.env.DATABASE_SSL);
+  if (explicitSsl === false) return null;
+
+  const sslMode = resolveSslMode();
+  const shouldUseSsl =
+    explicitSsl === true ||
+    sslMode === "require" ||
+    sslMode === "verify-ca" ||
+    sslMode === "verify-full";
+
+  if (!shouldUseSsl) return null;
+
+  const explicitRejectUnauthorized = parseOptionalBoolean(
+    process.env.DATABASE_SSL_REJECT_UNAUTHORIZED,
+  );
+  const sslConfig = {
+    rejectUnauthorized:
+      explicitRejectUnauthorized ??
+      (sslMode === "verify-ca" || sslMode === "verify-full"),
+  };
+
+  const ca = normalizeMultilineValue(process.env.DATABASE_SSL_CA);
+  if (ca) {
+    sslConfig.ca = ca;
+  }
+
+  return sslConfig;
+}
+
 function buildPoolConfig() {
   const databaseUrl = process.env.DATABASE_URL;
+  const ssl = buildSslConfig();
 
   if (typeof databaseUrl === "string" && databaseUrl.trim()) {
     return {
       connectionString: databaseUrl,
       ...poolDefaults(),
+      ...(ssl ? { ssl } : {}),
     };
   }
 
@@ -38,6 +123,7 @@ function buildPoolConfig() {
     password: requireEnv("DB_PASSWORD"),
     database: requireEnv("DB_NAME"),
     ...poolDefaults(),
+    ...(ssl ? { ssl } : {}),
   };
 }
 
@@ -116,4 +202,4 @@ function onSignal(signal) {
 process.on("SIGTERM", onSignal("SIGTERM"));
 process.on("SIGINT", onSignal("SIGINT"));
 
-module.exports = { pool, query, getClient, withTransaction };
+module.exports = { pool, query, getClient, withTransaction, buildPoolConfig };

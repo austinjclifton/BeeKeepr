@@ -6,8 +6,7 @@ const { classifyTemperature } = require("../utils/alertClassification.js");
 
 const ALERT_EMAIL_FROM =
   process.env.ALERT_EMAIL_FROM || process.env.EMAIL_FROM || "alerts@beekeepr.example";
-const APP_BASE_URL =
-  process.env.APP_BASE_URL || process.env.FRONTEND_URL || "http://localhost:5173";
+const APP_BASE_URL = getAppBaseUrl();
 
 /**
  * Main entry point from ingest to check if a reading is alert-worthy
@@ -186,15 +185,27 @@ async function handleCriticalEmail({
 }
 
 function buildEmailText({ hiveId, temperature, threshold, direction }) {
+  const loginUrl = APP_BASE_URL ? `\n  ${APP_BASE_URL.replace(/\/+$/, "")}/login` : "";
+
   return `
   Hive ${hiveId} is in CRITICAL condition.
 
   The last recorded temperature in Hive ${hiveId} was ${temperature}º,
   and your current critical threshold (${direction}) is ${threshold}º
 
-  Please check your dashboard immediately.
-  ${APP_BASE_URL.replace(/\/+$/, "")}/login
+  Please check your dashboard immediately.${loginUrl}
   `;
+}
+
+function getAppBaseUrl() {
+  const configured = process.env.APP_BASE_URL || process.env.FRONTEND_URL || null;
+  if (configured) return configured;
+
+  if (process.env.NODE_ENV !== "production") {
+    return "http://localhost:5173";
+  }
+
+  return null;
 }
 
 /* ========================================================================== */

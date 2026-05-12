@@ -13,7 +13,7 @@ SELECT
   'America/New_York'::text AS seed_timezone,
 
   (TIMESTAMP '2026-04-20 00:00:00' AT TIME ZONE 'America/New_York') AS start_at,
-  (TIMESTAMP '2026-05-10 18:00:00' AT TIME ZONE 'America/New_York') AS end_at,
+  (TIMESTAMP '2026-05-11 23:00:00' AT TIME ZONE 'America/New_York') AS end_at,
   interval '10 minutes' AS bucket_interval,
 
   TRUE AS alerts_enabled,

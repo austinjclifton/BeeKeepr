@@ -5,6 +5,10 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "node src/server.js",
+    "start": "node src/server.js",
+    "db:migrate": "node src/scripts/dbMigrate.js",
+    "db:seed:demo": "node src/scripts/dbSeedDemo.js",
+    "demo:tick": "node src/scripts/demoTick.js",
     "test": "node --test"
   },
   "dependencies": {
@@ -13,8 +17,6 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "mysql": "^2.18.1",
-    "mysql2": "^3.16.2",
     "pg": "^8.20.0",
     "resend": "^6.12.3",
     "swagger-ui-express": "^5.0.1",

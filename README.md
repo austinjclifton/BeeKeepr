@@ -4,14 +4,15 @@ BeeKeepr is a beehive monitoring and analytics platform. The current application
 
 ## Local Database
 
-Create the local PostgreSQL database:
+Create the local PostgreSQL database and apply the baseline schema:
 
 ```sh
 createdb beekeepr
-psql beekeepr < backend/docs/schema.sql
+cd backend
+npm run db:migrate
 ```
 
-The canonical fresh schema is [backend/docs/schema.sql](backend/docs/schema.sql).
+The canonical fresh schema remains [backend/docs/schema.sql](backend/docs/schema.sql).
 
 ## Backend Setup
 
@@ -19,10 +20,11 @@ The canonical fresh schema is [backend/docs/schema.sql](backend/docs/schema.sql)
 cd backend
 cp .env.example .env
 npm install
+npm run db:migrate
 npm run dev
 ```
 
-Use `DATABASE_URL=postgres://postgres:postgres@localhost:5432/beekeepr` or the equivalent `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` values. Do not commit real `.env` secrets.
+Use `DATABASE_URL=postgres://postgres:postgres@localhost:5432/beekeepr` or the equivalent `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` values. For hosted PostgreSQL, set `DATABASE_SSL=true` or include `?sslmode=require` in `DATABASE_URL`. Set `CORS_ORIGIN`, `SESSION_SECRET`, and `INGEST_TOKEN` in every non-local deployment. Do not commit real `.env` secrets.
 
 The backend runs on `http://localhost:4000` by default.
 
@@ -36,6 +38,30 @@ npm run dev
 ```
 
 The Vite dev server runs on `http://localhost:5173` and proxies `/api` and `/ingest` to the backend. Leave `VITE_API_BASE_URL` blank for the proxy, or set it to an explicit backend origin when serving the frontend separately.
+
+## Hybrid Deployment
+
+BeeKeepr supports a split deployment where the frontend is hosted on Vercel and the backend runs separately on AWS.
+
+Frontend on Vercel:
+
+```text
+VITE_API_BASE_URL=https://your-backend.example.com
+```
+
+Backend on AWS:
+
+```text
+NODE_ENV=production
+PORT=4000
+DATABASE_URL=postgres://...
+CORS_ORIGIN=https://your-vercel-app.vercel.app
+SESSION_SECRET=replace-me
+INGEST_TOKEN=replace-me
+APP_BASE_URL=https://your-vercel-app.vercel.app
+```
+
+The backend no longer requires a bundled `frontend/dist` directory when it is deployed as an API-only service.
 
 ## Data Flow
 
@@ -61,13 +87,21 @@ DEMO_ACCOUNT_USERNAME=demo
 
 The demo account should be created and preloaded with hive and reading data separately. Do not commit real demo passwords. New signups without hives will see clean empty states until data exists.
 
-For local demos, a deterministic Rochester, NY dataset is available:
+To create the demo beekeeper, locations, hives, and devices without duplicates:
 
 ```sh
-psql "$DATABASE_URL" -f backend/scripts/demo_data_rochester_apr7_may7.sql
+cd backend
+npm run db:seed:demo
 ```
 
-The script creates or reuses the `demo` beekeeper, four hives, one device per hive, 10-minute readings from April 7, 2026 through May 7, 2026, external weather conditions, and matching warning/critical alert rows. It does not set a real login password or wipe unrelated users.
+To generate one current 10-minute demo bucket and exit:
+
+```sh
+cd backend
+npm run demo:tick
+```
+
+The demo topology contains five hives across two locations: three in Rochester, NY and two in Atlanta, GA. `demo:tick` inserts location-aware external conditions and stable internal hive readings while deduping by the existing uniqueness rules.
 
 ## API Docs
 
