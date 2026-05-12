@@ -49,6 +49,12 @@ Frontend on Vercel:
 VITE_API_BASE_URL=https://your-backend.example.com
 ```
 
+For this repo, Vercel should use `frontend/` as the project root because that directory contains the React/Vite SPA served at `beekeepr.live`.
+
+For the production frontend at `beekeepr.live`, keep `VITE_API_BASE_URL=https://api.beekeepr.live` in Vercel so browser requests continue going directly to the separate backend host instead of the frontend origin.
+
+`frontend/vercel.json` needs an SPA rewrite to `/index.html` so refreshing nested client routes like `/dashboard`, `/analytics`, and `/hives` does not return a Vercel 404.
+
 Backend on AWS:
 
 ```text
