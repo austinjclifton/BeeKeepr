@@ -96,6 +96,170 @@ exports.upsert = async ({
   }
 };
 
+exports.createDeduped = async ({
+  locationId,
+  bucketAt,
+  fetchedAt = null,
+  provider,
+  status,
+  errorMessage = null,
+  temperature = null,
+  humidityPct = null,
+  precipMm = null,
+  windMps = null,
+  windGustMps = null,
+  pressureHpa = null,
+  cloudPct = null,
+  rawJson = null,
+}) => {
+  const rows = await exports.createManyDeduped({
+    conditions: [
+      {
+        locationId,
+        bucketAt,
+        fetchedAt,
+        provider,
+        status,
+        errorMessage,
+        temperature,
+        humidityPct,
+        precipMm,
+        windMps,
+        windGustMps,
+        pressureHpa,
+        cloudPct,
+        rawJson,
+      },
+    ],
+  });
+
+  return rows[0] ?? { inserted: false, condition: null };
+};
+
+exports.createManyDeduped = async ({ conditions }) => {
+  if (!Array.isArray(conditions) || conditions.length === 0) return [];
+
+  const payload = conditions.map((condition) => ({
+    location_id: condition.locationId,
+    bucket_at: condition.bucketAt,
+    fetched_at:
+      condition.fetchedAt ??
+      (condition.status === "pending" ? null : new Date().toISOString()),
+    provider: condition.provider,
+    status: condition.status,
+    error_message: condition.errorMessage ?? null,
+    temperature: condition.temperature ?? null,
+    humidity_pct: condition.humidityPct ?? null,
+    precip_mm: condition.precipMm ?? null,
+    wind_mps: condition.windMps ?? null,
+    wind_gust_mps: condition.windGustMps ?? null,
+    pressure_hpa: condition.pressureHpa ?? null,
+    cloud_pct: condition.cloudPct ?? null,
+    raw_json: condition.rawJson ?? null,
+  }));
+
+  try {
+    const rows = await query(
+      `
+      WITH input AS (
+        SELECT DISTINCT ON (location_id, bucket_at)
+          location_id,
+          bucket_at,
+          fetched_at,
+          provider,
+          status,
+          error_message,
+          temperature,
+          humidity_pct,
+          precip_mm,
+          wind_mps,
+          wind_gust_mps,
+          pressure_hpa,
+          cloud_pct,
+          raw_json
+        FROM jsonb_to_recordset($1::jsonb) AS i(
+          location_id bigint,
+          bucket_at timestamptz,
+          fetched_at timestamptz,
+          provider varchar(40),
+          status varchar(16),
+          error_message text,
+          temperature double precision,
+          humidity_pct double precision,
+          precip_mm double precision,
+          wind_mps double precision,
+          wind_gust_mps double precision,
+          pressure_hpa double precision,
+          cloud_pct double precision,
+          raw_json jsonb
+        )
+        ORDER BY location_id, bucket_at
+      ),
+      ins AS (
+        INSERT INTO external_condition (
+          location_id,
+          bucket_at,
+          fetched_at,
+          provider,
+          status,
+          error_message,
+          temperature,
+          humidity_pct,
+          precip_mm,
+          wind_mps,
+          wind_gust_mps,
+          pressure_hpa,
+          cloud_pct,
+          raw_json
+        )
+        SELECT
+          location_id,
+          bucket_at,
+          fetched_at,
+          provider,
+          status,
+          error_message,
+          temperature,
+          humidity_pct,
+          precip_mm,
+          wind_mps,
+          wind_gust_mps,
+          pressure_hpa,
+          cloud_pct,
+          raw_json
+        FROM input
+        ON CONFLICT (location_id, bucket_at) DO NOTHING
+        RETURNING *
+      )
+      SELECT true AS inserted, ins.*
+      FROM ins
+
+      UNION ALL
+
+      SELECT false AS inserted, ec.*
+      FROM input i
+      JOIN external_condition ec
+        ON ec.location_id = i.location_id
+       AND ec.bucket_at = i.bucket_at
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM ins
+        WHERE ins.location_id = i.location_id
+          AND ins.bucket_at = i.bucket_at
+      )
+      `,
+      [JSON.stringify(payload)],
+    );
+
+    return rows.map((row) => ({
+      inserted: row?.inserted === true,
+      condition: row,
+    }));
+  } catch (err) {
+    throw mapPgError(err) ?? err;
+  }
+};
+
 /**
  * Get an external condition record by locationId and bucketAt
  */

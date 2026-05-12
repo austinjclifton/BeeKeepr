@@ -2,6 +2,7 @@
 
 const bcrypt = require("bcrypt");
 
+const demoConfig = require("../config/demoData.config.js");
 const usersRepo = require("../db/users.db.js");
 const ingestRepo = require("../db/ingest.db.js");
 const externalConditionsRepo = require("../db/externalConditions.db.js");
@@ -9,571 +10,701 @@ const alertsService = require("./alerts.service.js");
 const locationsService = require("./locations.service.js");
 const hivesService = require("./hives.service.js");
 const devicesService = require("./devices.service.js");
+const {
+  buildExternalCondition,
+  buildReadingInput,
+  floorToInterval,
+  subtractUtcMonths,
+  toIntervalMs,
+} = require("../utils/demoSimulation.js");
+const { classifyTemperature } = require("../utils/alertClassification.js");
 
 const BCRYPT_ROUNDS = 12;
-const TEN_MIN_MS = 10 * 60 * 1000;
-const DEFAULT_DEMO_PASSWORD = "replace-me";
-const DEFAULT_DEMO_EMAIL = "demo@beekeepr.example";
-const DEMO_PROVIDER = "demo-simulator";
-
-const DEMO_THRESHOLDS = Object.freeze({
-    alertsEnabled: true,
-    warningLowThreshold: 92,
-    warningHighThreshold: 98,
-    criticalLowThreshold: 89,
-    criticalHighThreshold: 101,
-});
-
-const DEMO_LOCATIONS = Object.freeze([
-    {
-        key: "roc",
-        name: "Rochester, NY Demo Yard",
-        cityName: "Rochester, NY",
-        timeZone: "America/New_York",
-        lat: 43.1566,
-        lon: -77.6088,
-        externalBaseTemp: 58.5,
-        externalDailyAmp: 11.0,
-        externalSeasonalAmp: 4.0,
-        externalPeakHour: 15.5,
-        humidityBase: 66,
-        humidityAmp: 14,
-        windBaseMps: 3.1,
-        windAmpMps: 1.5,
-        pressureBaseHpa: 1014.5,
-    },
-    {
-        key: "atl",
-        name: "Atlanta, GA Demo Yard",
-        cityName: "Atlanta, GA",
-        timeZone: "America/New_York",
-        lat: 33.749,
-        lon: -84.388,
-        externalBaseTemp: 70.5,
-        externalDailyAmp: 9.5,
-        externalSeasonalAmp: 3.2,
-        externalPeakHour: 16.0,
-        humidityBase: 62,
-        humidityAmp: 12,
-        windBaseMps: 2.7,
-        windAmpMps: 1.2,
-        pressureBaseHpa: 1012.8,
-    },
-]);
-
-const DEMO_HIVES = Object.freeze([
-    {
-        key: "roc-01",
-        locationKey: "roc",
-        name: "Highland Stable Hive",
-        notes: "Rochester demo hive with a stable brood temperature profile",
-        installedAt: "2026-04-01T13:00:00.000Z",
-        deviceInstalledAt: "2026-04-01T13:00:00.000Z",
-        internalBaseline: 95.0,
-        internalDailyAmp: 0.35,
-        internalSeasonalAmp: 0.28,
-        externalSensitivity: 0.024,
-        phaseShift: 0.0,
-        rssiBase: -58,
-        rssiAmp: 7,
-    },
-    {
-        key: "roc-02",
-        locationKey: "roc",
-        name: "Genesee Production Hive",
-        notes: "Rochester demo hive with a slightly warmer brood cluster",
-        installedAt: "2026-04-01T13:15:00.000Z",
-        deviceInstalledAt: "2026-04-01T13:15:00.000Z",
-        internalBaseline: 95.6,
-        internalDailyAmp: 0.42,
-        internalSeasonalAmp: 0.34,
-        externalSensitivity: 0.027,
-        phaseShift: 0.8,
-        rssiBase: -64,
-        rssiAmp: 8,
-    },
-    {
-        key: "roc-03",
-        locationKey: "roc",
-        name: "Cobbs Hill Cool Hive",
-        notes: "Rochester demo hive with a slightly cooler overnight profile",
-        installedAt: "2026-04-01T13:30:00.000Z",
-        deviceInstalledAt: "2026-04-01T13:30:00.000Z",
-        internalBaseline: 94.4,
-        internalDailyAmp: 0.4,
-        internalSeasonalAmp: 0.31,
-        externalSensitivity: 0.03,
-        phaseShift: 1.7,
-        rssiBase: -71,
-        rssiAmp: 9,
-    },
-    {
-        key: "atl-01",
-        locationKey: "atl",
-        name: "Piedmont Warm Hive",
-        notes: "Atlanta demo hive with slightly higher afternoon heat retention",
-        installedAt: "2026-04-01T14:00:00.000Z",
-        deviceInstalledAt: "2026-04-01T14:00:00.000Z",
-        internalBaseline: 95.8,
-        internalDailyAmp: 0.48,
-        internalSeasonalAmp: 0.3,
-        externalSensitivity: 0.034,
-        phaseShift: 0.5,
-        rssiBase: -61,
-        rssiAmp: 7,
-    },
-    {
-        key: "atl-02",
-        locationKey: "atl",
-        name: "Grant Park Variable Hive",
-        notes: "Atlanta demo hive with a slightly wider daily temperature swing",
-        installedAt: "2026-04-01T14:15:00.000Z",
-        deviceInstalledAt: "2026-04-01T14:15:00.000Z",
-        internalBaseline: 94.9,
-        internalDailyAmp: 0.54,
-        internalSeasonalAmp: 0.36,
-        externalSensitivity: 0.032,
-        phaseShift: 2.1,
-        rssiBase: -68,
-        rssiAmp: 8,
-    },
-]);
-
-const localTimeFormatterCache = new Map();
+const DEFAULT_BATCH_SIZE = 2500;
 
 exports.ensureDemoSeed = async function ensureDemoSeed() {
-    const beekeeper = await ensureDemoBeekeeper();
-    const beekeeperId = toEntityId(beekeeper.id, "beekeeperId");
-    const locations = await ensureDemoLocations();
-    const locationMap = new Map(locations.map((location) => [location.key, location]));
+  const beekeeper = await ensureDemoBeekeeper();
+  const beekeeperId = toEntityId(beekeeper.id, "beekeeperId");
+  const locations = await ensureDemoLocations();
+  const locationMap = new Map(locations.map((location) => [location.key, location]));
 
-    const existingHives = await hivesService.listHives({ beekeeperId });
-    const hiveMap = new Map(existingHives.map((hive) => [hive.name, hive]));
-    const topology = [];
+  const existingHives = await hivesService.listHives({ beekeeperId });
+  const hiveMap = new Map(existingHives.map((hive) => [hive.name, hive]));
+  const topology = [];
 
-    for (const hiveConfig of DEMO_HIVES) {
-        const location = locationMap.get(hiveConfig.locationKey);
-        if (!location) {
-            throw new Error(`Missing demo location for ${hiveConfig.locationKey}`);
-        }
-
-        const existingHive = hiveMap.get(hiveConfig.name);
-        const hivePayload = {
-            beekeeperId,
-            name: hiveConfig.name,
-            notes: hiveConfig.notes,
-            locationId: location.locationId,
-            status: "active",
-            installedAt: hiveConfig.installedAt,
-            archivedAt: null,
-            warningLowThreshold: DEMO_THRESHOLDS.warningLowThreshold,
-            warningHighThreshold: DEMO_THRESHOLDS.warningHighThreshold,
-            criticalLowThreshold: DEMO_THRESHOLDS.criticalLowThreshold,
-            criticalHighThreshold: DEMO_THRESHOLDS.criticalHighThreshold,
-        };
-
-        const hive = existingHive
-            ? await hivesService.updateHive({
-                hiveId: toEntityId(existingHive.id, "hiveId"),
-                ...hivePayload,
-            })
-            : await hivesService.createHive(hivePayload);
-
-        if (!hive) {
-            throw new Error(`Unable to ensure demo hive ${hiveConfig.name}`);
-        }
-
-        const hiveId = toEntityId(hive.id, "hiveId");
-        const devices = await devicesService.listDevicesForHive({ beekeeperId, hiveId });
-        let device = devices?.[0] ?? null;
-
-        if (!device) {
-            device = await devicesService.createDevice({
-                beekeeperId,
-                hiveId,
-                installedAt: hiveConfig.deviceInstalledAt,
-            });
-        }
-
-        if (!device) {
-            throw new Error(`Unable to ensure a device for demo hive ${hiveConfig.name}`);
-        }
-
-        topology.push({
-            ...hiveConfig,
-            beekeeperId,
-            hiveId,
-            deviceId: toEntityId(device.id, "deviceId"),
-            location,
-        });
+  for (const hiveConfig of demoConfig.hives) {
+    const location = locationMap.get(hiveConfig.locationKey);
+    if (!location) {
+      throw new Error(`Missing demo location for ${hiveConfig.locationKey}`);
     }
 
-    return {
-        beekeeper: {
-            id: beekeeperId,
-            username: beekeeper.username,
-        },
-        locations: locations.map((location) => ({
-            key: location.key,
-            locationId: location.locationId,
-            name: location.name,
-            cityName: location.cityName,
-        })),
-        hives: topology.map((item) => ({
-            key: item.key,
-            hiveId: item.hiveId,
-            deviceId: item.deviceId,
-            locationKey: item.location.key,
-            name: item.name,
-        })),
+    const existingHive = hiveMap.get(hiveConfig.name);
+    const hivePayload = {
+      beekeeperId,
+      name: hiveConfig.name,
+      notes: hiveConfig.notes,
+      locationId: location.locationId,
+      status: "active",
+      installedAt: hiveConfig.installedAt,
+      archivedAt: null,
+      warningLowThreshold: demoConfig.thresholds.warningLowThreshold,
+      warningHighThreshold: demoConfig.thresholds.warningHighThreshold,
+      criticalLowThreshold: demoConfig.thresholds.criticalLowThreshold,
+      criticalHighThreshold: demoConfig.thresholds.criticalHighThreshold,
     };
+
+    const hive = existingHive
+      ? await hivesService.updateHive({
+          hiveId: toEntityId(existingHive.id, "hiveId"),
+          ...hivePayload,
+        })
+      : await hivesService.createHive(hivePayload);
+
+    if (!hive) {
+      throw new Error(`Unable to ensure demo hive ${hiveConfig.name}`);
+    }
+
+    const hiveId = toEntityId(hive.id, "hiveId");
+    const devices = await devicesService.listDevicesForHive({ beekeeperId, hiveId });
+    let device = devices?.[0] ?? null;
+
+    if (!device) {
+      device = await devicesService.createDevice({
+        beekeeperId,
+        hiveId,
+        installedAt: hiveConfig.deviceInstalledAt,
+      });
+    }
+
+    if (!device) {
+      throw new Error(`Unable to ensure a device for demo hive ${hiveConfig.name}`);
+    }
+
+    topology.push({
+      ...hiveConfig,
+      beekeeperId,
+      hiveId,
+      deviceId: toEntityId(device.id, "deviceId"),
+      location,
+    });
+  }
+
+  return {
+    beekeeper: {
+      id: beekeeperId,
+      username: beekeeper.username,
+    },
+    locations: locations.map((location) => ({
+      key: location.key,
+      locationId: location.locationId,
+      name: location.name,
+      cityName: location.cityName,
+    })),
+    hives: topology.map((item) => ({
+      key: item.key,
+      hiveId: item.hiveId,
+      deviceId: item.deviceId,
+      locationKey: item.location.key,
+      name: item.name,
+    })),
+  };
 };
 
 exports.runDemoTick = async function runDemoTick({ now = new Date() } = {}) {
-    const seed = await exports.ensureDemoSeed();
-    const bucketAtDate = floorToTenMinutes(now instanceof Date ? now : new Date(now));
-    const bucketAt = bucketAtDate.toISOString();
-    const topology = await buildDemoTopology(seed);
-    const locationSummaries = [];
-    const locationState = new Map();
+  const intervalMinutes = demoConfig.history.intervalMinutes;
+  const bucketAtDate = floorToInterval(toDate(now, "now"), intervalMinutes);
+  const result = await runDemoRange({
+    startAt: bucketAtDate,
+    endAt: bucketAtDate,
+    intervalMinutes,
+    withAlerts: true,
+    sendCriticalEmails: true,
+    touchLastSeen: true,
+    batchSize: demoConfig.hives.length,
+  });
 
-    for (const location of topology.locations) {
-        const external = buildExternalCondition(location, bucketAtDate);
-        const row = await externalConditionsRepo.upsert({
-            locationId: location.locationId,
-            bucketAt,
-            provider: DEMO_PROVIDER,
-            status: "success",
-            temperature: external.temperature,
-            humidityPct: external.humidityPct,
-            precipMm: external.precipMm,
-            windMps: external.windMps,
-            windGustMps: external.windGustMps,
-            pressureHpa: external.pressureHpa,
-            cloudPct: external.cloudPct,
-            rawJson: {
-                source: DEMO_PROVIDER,
-                cityName: location.cityName,
-                bucketAt,
-            },
-        });
-
-        locationState.set(location.key, {
-            ...external,
-            row,
-        });
-
-        locationSummaries.push({
-            key: location.key,
-            locationId: location.locationId,
-            cityName: location.cityName,
-            temperature: external.temperature,
-        });
-    }
-
-    const hiveSummaries = [];
-    let readingsInserted = 0;
-    let readingsSkipped = 0;
-
-    for (const hive of topology.hives) {
-        const external = locationState.get(hive.location.key);
-        const readingInput = buildReadingInput({
-            hive,
-            location: hive.location,
-            bucketAtDate,
-            externalTemperature: external.temperature,
-        });
-
-        const result = await ingestRepo.createReadingDeduped10m({
-            deviceId: hive.deviceId,
-            bucketAt,
-            temperature: readingInput.temperature,
-            rssiDbm: readingInput.rssi,
-        });
-
-        await devicesService.touchLastSeen({
-            beekeeperId: hive.beekeeperId,
-            deviceId: hive.deviceId,
-            seenAt: bucketAt,
-        });
-
-        if (result.inserted && result.reading) {
-            readingsInserted += 1;
-            await alertsService.processReading(result.reading);
-        } else {
-            readingsSkipped += 1;
-        }
-
-        hiveSummaries.push({
-            key: hive.key,
-            hiveId: hive.hiveId,
-            deviceId: hive.deviceId,
-            locationKey: hive.location.key,
-            temperature: readingInput.temperature,
-            rssi: readingInput.rssi,
-            inserted: result.inserted,
-        });
-    }
-
-    return {
-        bucketAt,
-        beekeeper: seed.beekeeper,
-        externalConditionsUpserted: locationSummaries.length,
-        readingsInserted,
-        readingsSkipped,
-        locations: locationSummaries,
-        hives: hiveSummaries,
-    };
+  return {
+    bucketAt: bucketAtDate.toISOString(),
+    beekeeper: result.beekeeper,
+    externalConditionsInserted: result.tables.external_condition.inserted,
+    externalConditionsSkipped: result.tables.external_condition.skipped,
+    externalConditionsUpserted:
+      result.tables.external_condition.inserted +
+      result.tables.external_condition.skipped,
+    readingsInserted: result.tables.reading.inserted,
+    readingsSkipped: result.tables.reading.skipped,
+    alertsCreated: result.tables.alert.created,
+    alertsSkipped: result.tables.alert.skipped,
+    locations: result.locations.map((location) => ({
+      key: location.key,
+      locationId: location.locationId,
+      cityName: location.cityName,
+      temperature: location.latestTemperature,
+      inserted: location.inserted > 0,
+    })),
+    hives: result.hives.map((hive) => ({
+      key: hive.key,
+      hiveId: hive.hiveId,
+      deviceId: hive.deviceId,
+      locationKey: hive.locationKey,
+      temperature: hive.latestTemperature,
+      rssi: hive.latestRssi,
+      inserted: hive.inserted > 0,
+      scenarios: hive.latestScenarios,
+    })),
+  };
 };
 
-async function ensureDemoBeekeeper() {
-    const username = getDemoUsername();
-    let user = await usersRepo.findByUsername({ username });
+exports.runDemoBackfill = async function runDemoBackfill({
+  start = null,
+  end = null,
+  months = demoConfig.history.months,
+  intervalMinutes = demoConfig.history.intervalMinutes,
+  withAlerts = false,
+  now = new Date(),
+  batchSize = DEFAULT_BATCH_SIZE,
+} = {}) {
+  const window = resolveBackfillWindow({
+    start,
+    end,
+    months,
+    intervalMinutes,
+    now,
+  });
 
-    if (!user) {
-        const passwordHash = await bcrypt.hash(getDemoPassword(), BCRYPT_ROUNDS);
+  return runDemoRange({
+    startAt: window.startAt,
+    endAt: window.endAt,
+    intervalMinutes: window.intervalMinutes,
+    withAlerts,
+    sendCriticalEmails: false,
+    touchLastSeen: true,
+    batchSize,
+    requestedEndAt: window.requestedEndAt,
+    futureBucketsSkipped: window.futureBucketsSkipped,
+  });
+};
 
-        try {
-            user = await usersRepo.create({
-                username,
-                email: getDemoEmail(),
-                passwordHash,
-            });
-        } catch (err) {
-            if (isUniqueViolation(err)) {
-                throw new Error("Demo account email is already in use");
-            }
+async function runDemoRange({
+  startAt,
+  endAt,
+  intervalMinutes,
+  withAlerts,
+  sendCriticalEmails,
+  touchLastSeen,
+  batchSize,
+  requestedEndAt = endAt,
+  futureBucketsSkipped = 0,
+}) {
+  const seed = await exports.ensureDemoSeed();
+  const topology = await buildDemoTopology(seed);
+  const intervalMs = toIntervalMs(intervalMinutes);
+  const summary = createRangeSummary({
+    seed,
+    topology,
+    startAt,
+    endAt,
+    requestedEndAt,
+    intervalMinutes,
+    futureBucketsSkipped,
+    withAlerts,
+  });
+  const locationByKey = new Map(topology.locations.map((location) => [location.key, location]));
+  const externalBatch = [];
+  const readingBatch = [];
 
-            throw err;
-        }
+  for (let atMs = startAt.getTime(); atMs <= endAt.getTime(); atMs += intervalMs) {
+    const bucketAtDate = new Date(atMs);
+    const bucketAt = bucketAtDate.toISOString();
+    const externalByLocationKey = new Map();
+
+    for (const location of topology.locations) {
+      const external = buildExternalCondition(location, bucketAtDate);
+      externalByLocationKey.set(location.key, external);
+      externalBatch.push({
+        locationKey: location.key,
+        locationId: location.locationId,
+        bucketAt,
+        fetchedAt: bucketAt,
+        provider: demoConfig.provider,
+        status: "success",
+        temperature: external.temperature,
+        humidityPct: external.humidityPct,
+        precipMm: external.precipMm,
+        windMps: external.windMps,
+        windGustMps: external.windGustMps,
+        pressureHpa: external.pressureHpa,
+        cloudPct: external.cloudPct,
+        rawJson: {
+          source: demoConfig.provider,
+          cityName: location.cityName,
+          bucketAt,
+          climateProfile: location.key,
+        },
+      });
+
+      const locationSummary = summary.locationsByKey.get(location.key);
+      locationSummary.latestTemperature = external.temperature;
     }
 
-    const beekeeperId = toEntityId(user.id, "beekeeperId");
-    const configuredPassword = normalizeConfiguredValue(process.env.DEMO_ACCOUNT_PASSWORD);
-    if (configuredPassword) {
-        const passwordHash = await bcrypt.hash(configuredPassword, BCRYPT_ROUNDS);
-        await usersRepo.updatePasswordHash({ id: beekeeperId, passwordHash });
+    for (const hive of topology.hives) {
+      const location = locationByKey.get(hive.location.key);
+      const externalCondition = externalByLocationKey.get(hive.location.key);
+      const readingInput = buildReadingInput({
+        hive,
+        location,
+        bucketAtDate,
+        externalCondition,
+      });
+      const classification = classifyTemperature(
+        readingInput.temperature,
+        getDemoThresholdsForClassification(hive),
+      );
+
+      readingBatch.push({
+        hiveKey: hive.key,
+        hiveId: hive.hiveId,
+        locationKey: hive.location.key,
+        deviceId: hive.deviceId,
+        bucketAt,
+        temperature: readingInput.temperature,
+        rssiDbm: readingInput.rssi,
+        scenarios: readingInput.scenarios,
+        alertCandidate: classification !== null,
+      });
+
+      const hiveSummary = summary.hivesByKey.get(hive.key);
+      hiveSummary.latestTemperature = readingInput.temperature;
+      hiveSummary.latestRssi = readingInput.rssi;
+      hiveSummary.latestScenarios = readingInput.scenarios;
+      hiveSummary.minTemperature = minValue(
+        hiveSummary.minTemperature,
+        readingInput.temperature,
+      );
+      hiveSummary.maxTemperature = maxValue(
+        hiveSummary.maxTemperature,
+        readingInput.temperature,
+      );
+      for (const scenario of readingInput.scenarios) {
+        hiveSummary.scenarioBuckets[scenario.type] =
+          (hiveSummary.scenarioBuckets[scenario.type] || 0) + 1;
+      }
     }
 
-    await usersRepo.updateBeekeeperAlertSettings({
-        beekeeperId,
-        alertsEnabled: DEMO_THRESHOLDS.alertsEnabled,
-        warningLow: DEMO_THRESHOLDS.warningLowThreshold,
-        warningHigh: DEMO_THRESHOLDS.warningHighThreshold,
-        criticalLow: DEMO_THRESHOLDS.criticalLowThreshold,
-        criticalHigh: DEMO_THRESHOLDS.criticalHighThreshold,
+    if (externalBatch.length >= batchSize) {
+      await flushExternalBatch({ batch: externalBatch, summary });
+    }
+
+    if (readingBatch.length >= batchSize) {
+      await flushReadingBatch({
+        batch: readingBatch,
+        summary,
+        withAlerts,
+        sendCriticalEmails,
+      });
+    }
+  }
+
+  await flushExternalBatch({ batch: externalBatch, summary });
+  await flushReadingBatch({
+    batch: readingBatch,
+    summary,
+    withAlerts,
+    sendCriticalEmails,
+  });
+
+  if (touchLastSeen) {
+    await touchDemoDevices({ topology, seenAt: endAt.toISOString() });
+  }
+
+  return finalizeSummary(summary);
+}
+
+async function flushExternalBatch({ batch, summary }) {
+  if (batch.length === 0) return;
+
+  const rows = batch.splice(0, batch.length);
+  const results = await externalConditionsRepo.createManyDeduped({
+    conditions: rows,
+  });
+  const resultByKey = new Map(
+    results.map((result) => [
+      bucketKey(result.condition.location_id, result.condition.bucket_at),
+      result,
+    ]),
+  );
+
+  for (const row of rows) {
+    const result = resultByKey.get(bucketKey(row.locationId, row.bucketAt));
+    const inserted = result?.inserted === true;
+    const locationSummary = summary.locationsByKey.get(row.locationKey);
+
+    if (inserted) {
+      summary.tables.external_condition.inserted += 1;
+      locationSummary.inserted += 1;
+    } else {
+      summary.tables.external_condition.skipped += 1;
+      locationSummary.skipped += 1;
+    }
+  }
+}
+
+async function flushReadingBatch({
+  batch,
+  summary,
+  withAlerts,
+  sendCriticalEmails,
+}) {
+  if (batch.length === 0) return;
+
+  const rows = batch.splice(0, batch.length);
+  const results = await ingestRepo.createReadingsDeduped10mBatch({
+    readings: rows,
+  });
+  const resultByKey = new Map(
+    results.map((result) => [
+      bucketKey(result.reading.device_id, result.reading.bucket_at),
+      result,
+    ]),
+  );
+
+  for (const row of rows) {
+    const result = resultByKey.get(bucketKey(row.deviceId, row.bucketAt));
+    const inserted = result?.inserted === true;
+    const hiveSummary = summary.hivesByKey.get(row.hiveKey);
+
+    if (inserted) {
+      summary.tables.reading.inserted += 1;
+      hiveSummary.inserted += 1;
+    } else {
+      summary.tables.reading.skipped += 1;
+      hiveSummary.skipped += 1;
+    }
+
+    if (withAlerts && row.alertCandidate && result?.reading) {
+      summary.tables.alert.candidates += 1;
+      const alertResult = await alertsService.processReading(result.reading, {
+        sendCriticalEmail: sendCriticalEmails,
+        createdAt: row.bucketAt,
+        log: sendCriticalEmails,
+      });
+
+      if (alertResult?.created) {
+        summary.tables.alert.created += 1;
+        hiveSummary.alertsCreated += 1;
+      } else {
+        summary.tables.alert.skipped += 1;
+        hiveSummary.alertsSkipped += 1;
+      }
+    }
+  }
+}
+
+async function touchDemoDevices({ topology, seenAt }) {
+  for (const hive of topology.hives) {
+    await devicesService.touchLastSeen({
+      beekeeperId: hive.beekeeperId,
+      deviceId: hive.deviceId,
+      seenAt,
     });
+  }
+}
 
-    return (await usersRepo.findById({ id: beekeeperId })) || user;
+async function ensureDemoBeekeeper() {
+  const username = getDemoUsername();
+  let user = await usersRepo.findByUsername({ username });
+
+  if (!user) {
+    const passwordHash = await bcrypt.hash(getDemoPassword(), BCRYPT_ROUNDS);
+
+    try {
+      user = await usersRepo.create({
+        username,
+        email: getDemoEmail(),
+        passwordHash,
+      });
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        throw new Error("Demo account email is already in use");
+      }
+
+      throw err;
+    }
+  }
+
+  const beekeeperId = toEntityId(user.id, "beekeeperId");
+  const configuredPassword = normalizeConfiguredValue(process.env.DEMO_ACCOUNT_PASSWORD);
+  if (configuredPassword) {
+    const passwordHash = await bcrypt.hash(configuredPassword, BCRYPT_ROUNDS);
+    await usersRepo.updatePasswordHash({ id: beekeeperId, passwordHash });
+  }
+
+  await usersRepo.updateBeekeeperAlertSettings({
+    beekeeperId,
+    alertsEnabled: demoConfig.thresholds.alertsEnabled,
+    warningLow: demoConfig.thresholds.warningLowThreshold,
+    warningHigh: demoConfig.thresholds.warningHighThreshold,
+    criticalLow: demoConfig.thresholds.criticalLowThreshold,
+    criticalHigh: demoConfig.thresholds.criticalHighThreshold,
+  });
+
+  return (await usersRepo.findById({ id: beekeeperId })) || user;
 }
 
 async function ensureDemoLocations() {
-    const ensured = [];
+  const ensured = [];
 
-    for (const locationConfig of DEMO_LOCATIONS) {
-        const location = await locationsService.createOrGetLocation({
-            name: locationConfig.name,
-            lat: locationConfig.lat,
-            lon: locationConfig.lon,
-        });
+  for (const locationConfig of demoConfig.locations) {
+    const location = await locationsService.createOrGetLocation({
+      name: locationConfig.name,
+      lat: locationConfig.lat,
+      lon: locationConfig.lon,
+    });
 
-        if (!location) {
-            throw new Error(`Unable to ensure demo location ${locationConfig.name}`);
-        }
-
-        ensured.push({
-            ...locationConfig,
-            locationId: toEntityId(location.id, "locationId"),
-        });
+    if (!location) {
+      throw new Error(`Unable to ensure demo location ${locationConfig.name}`);
     }
 
-    return ensured;
+    ensured.push({
+      ...locationConfig,
+      locationId: toEntityId(location.id, "locationId"),
+    });
+  }
+
+  return ensured;
 }
 
 async function buildDemoTopology(seed) {
-    const locationsByKey = new Map();
-    for (const location of DEMO_LOCATIONS) {
-        const seededLocation = seed.locations.find((entry) => entry.key === location.key);
-        locationsByKey.set(location.key, {
-            ...location,
-            locationId: toEntityId(seededLocation.locationId, "locationId"),
-        });
-    }
+  const locationsByKey = new Map();
+  for (const location of demoConfig.locations) {
+    const seededLocation = seed.locations.find((entry) => entry.key === location.key);
+    locationsByKey.set(location.key, {
+      ...location,
+      locationId: toEntityId(seededLocation.locationId, "locationId"),
+    });
+  }
 
-    return {
-        locations: Array.from(locationsByKey.values()),
-        hives: seed.hives.map((hive) => {
-            const hiveConfig = DEMO_HIVES.find((entry) => entry.key === hive.key);
+  return {
+    locations: Array.from(locationsByKey.values()),
+    hives: seed.hives.map((hive) => {
+      const hiveConfig = demoConfig.hives.find((entry) => entry.key === hive.key);
 
-            return {
-                ...hiveConfig,
-                beekeeperId: seed.beekeeper.id,
-                hiveId: toEntityId(hive.hiveId, "hiveId"),
-                deviceId: toEntityId(hive.deviceId, "deviceId"),
-                location: locationsByKey.get(hive.locationKey),
-            };
-        }),
-    };
+      return {
+        ...hiveConfig,
+        beekeeperId: seed.beekeeper.id,
+        hiveId: toEntityId(hive.hiveId, "hiveId"),
+        deviceId: toEntityId(hive.deviceId, "deviceId"),
+        location: locationsByKey.get(hive.locationKey),
+      };
+    }),
+  };
 }
 
-function buildExternalCondition(location, bucketAtDate) {
-    const local = getLocalTimeParts(bucketAtDate, location.timeZone);
-    const localHour = local.hour + local.minute / 60;
-    const dailyWave = Math.cos((Math.PI * 2 * (localHour - location.externalPeakHour)) / 24);
-    const seasonalWave = Math.sin((Math.PI * 2 * (local.dayOfYear - 120)) / 365);
-    const cloudWave = Math.sin((Math.PI * 2 * (local.dayOfYear - 118)) / 9);
+function resolveBackfillWindow({
+  start,
+  end,
+  months,
+  intervalMinutes,
+  now,
+}) {
+  const normalizedIntervalMinutes = toPositiveInteger(
+    intervalMinutes,
+    "intervalMinutes",
+  );
+  const nowBucket = floorToInterval(toDate(now, "now"), normalizedIntervalMinutes);
+  const requestedEndAt = end
+    ? floorToInterval(toDate(end, "end"), normalizedIntervalMinutes)
+    : nowBucket;
+  const endAt = requestedEndAt > nowBucket ? nowBucket : requestedEndAt;
+  const monthsValue = toPositiveInteger(months, "months");
+  const startAt = start
+    ? floorToInterval(toDate(start, "start"), normalizedIntervalMinutes)
+    : floorToInterval(
+        subtractUtcMonths(endAt, monthsValue),
+        normalizedIntervalMinutes,
+      );
 
-    const temperature = roundToOne(
-        location.externalBaseTemp +
-        location.externalDailyAmp * dailyWave +
-        location.externalSeasonalAmp * seasonalWave,
-    );
-    const humidityPct = roundToOne(
-        clamp(
-            location.humidityBase - location.humidityAmp * dailyWave + 6 * cloudWave,
-            28,
-            96,
-        ),
-    );
-    const windMps = roundToOne(
-        clamp(
-            location.windBaseMps +
-            location.windAmpMps * ((1 - dailyWave) / 2) +
-            0.35 * Math.sin((Math.PI * 2 * (localHour + 2)) / 12),
-            0.4,
-            11,
-        ),
-    );
-    const windGustMps = roundToOne(clamp(windMps + 0.9 + Math.max(0, cloudWave), windMps, 14));
-    const cloudPct = roundToOne(clamp(40 - 18 * dailyWave + 22 * cloudWave, 5, 96));
-    const precipMm = cloudPct >= 84 ? roundToOne((cloudPct - 82) / 18) : 0;
-    const pressureHpa = roundToOne(
-        location.pressureBaseHpa + 2.6 * Math.cos((Math.PI * 2 * (local.dayOfYear - 116)) / 6),
-    );
+  if (startAt > endAt) {
+    throw new Error("Backfill start must be before or equal to end");
+  }
 
-    return {
-        temperature,
-        humidityPct,
-        precipMm,
-        windMps,
-        windGustMps,
-        pressureHpa,
-        cloudPct,
-    };
+  return {
+    startAt,
+    endAt,
+    requestedEndAt,
+    intervalMinutes: normalizedIntervalMinutes,
+    futureBucketsSkipped: requestedEndAt > nowBucket
+      ? countBuckets({
+          startAt: new Date(nowBucket.getTime() + toIntervalMs(normalizedIntervalMinutes)),
+          endAt: requestedEndAt,
+          intervalMinutes: normalizedIntervalMinutes,
+        })
+      : 0,
+  };
 }
 
-function buildReadingInput({ hive, location, bucketAtDate, externalTemperature }) {
-    const local = getLocalTimeParts(bucketAtDate, location.timeZone);
-    const localHour = local.hour + local.minute / 60;
-    const dailyWave = Math.cos((Math.PI * 2 * (localHour - 14 - hive.phaseShift)) / 24);
-    const seasonalWave = Math.sin(
-        (Math.PI * 2 * (local.dayOfYear - 120)) / 28 + hive.phaseShift,
-    );
-    const temperature = roundToOne(
-        clamp(
-            hive.internalBaseline +
-            hive.internalDailyAmp * dailyWave +
-            hive.internalSeasonalAmp * seasonalWave +
-            hive.externalSensitivity * (externalTemperature - location.externalBaseTemp),
-            92,
-            98,
-        ),
-    );
-    const signalWave = Math.sin((Math.PI * 2 * (localHour + hive.phaseShift)) / 24);
-    const rssi = Math.round(clamp(hive.rssiBase - ((signalWave + 1) / 2) * hive.rssiAmp, -95, -45));
-
-    return {
-        temperature,
-        rssi,
-    };
+function createRangeSummary({
+  seed,
+  topology,
+  startAt,
+  endAt,
+  requestedEndAt,
+  intervalMinutes,
+  futureBucketsSkipped,
+  withAlerts,
+}) {
+  return {
+    beekeeper: seed.beekeeper,
+    startAt: startAt.toISOString(),
+    endAt: endAt.toISOString(),
+    requestedEndAt: requestedEndAt.toISOString(),
+    intervalMinutes,
+    buckets: countBuckets({ startAt, endAt, intervalMinutes }),
+    futureBucketsSkipped,
+    withAlerts,
+    tables: {
+      external_condition: { inserted: 0, skipped: 0 },
+      reading: { inserted: 0, skipped: 0 },
+      alert: { candidates: 0, created: 0, skipped: 0 },
+    },
+    locationsByKey: new Map(
+      topology.locations.map((location) => [
+        location.key,
+        {
+          key: location.key,
+          locationId: location.locationId,
+          name: location.name,
+          cityName: location.cityName,
+          inserted: 0,
+          skipped: 0,
+          latestTemperature: null,
+        },
+      ]),
+    ),
+    hivesByKey: new Map(
+      topology.hives.map((hive) => [
+        hive.key,
+        {
+          key: hive.key,
+          hiveId: hive.hiveId,
+          deviceId: hive.deviceId,
+          locationKey: hive.location.key,
+          name: hive.name,
+          inserted: 0,
+          skipped: 0,
+          alertsCreated: 0,
+          alertsSkipped: 0,
+          minTemperature: null,
+          maxTemperature: null,
+          latestTemperature: null,
+          latestRssi: null,
+          latestScenarios: [],
+          scenarioBuckets: {},
+        },
+      ]),
+    ),
+  };
 }
 
-function floorToTenMinutes(date) {
-    return new Date(Math.floor(date.getTime() / TEN_MIN_MS) * TEN_MIN_MS);
+function finalizeSummary(summary) {
+  return {
+    beekeeper: summary.beekeeper,
+    startAt: summary.startAt,
+    endAt: summary.endAt,
+    requestedEndAt: summary.requestedEndAt,
+    intervalMinutes: summary.intervalMinutes,
+    buckets: summary.buckets,
+    futureBucketsSkipped: summary.futureBucketsSkipped,
+    withAlerts: summary.withAlerts,
+    tables: summary.tables,
+    locations: Array.from(summary.locationsByKey.values()),
+    hives: Array.from(summary.hivesByKey.values()),
+  };
 }
 
-function getLocalTimeParts(date, timeZone) {
-    const formatter = getLocalTimeFormatter(timeZone);
-    const values = Object.create(null);
+function getDemoThresholdsForClassification(hive) {
+  const thresholds = hive.thresholds || demoConfig.thresholds;
 
-    for (const part of formatter.formatToParts(date)) {
-        if (part.type !== "literal") {
-            values[part.type] = Number(part.value);
-        }
-    }
-
-    return {
-        year: values.year,
-        month: values.month,
-        day: values.day,
-        hour: values.hour,
-        minute: values.minute,
-        dayOfYear: getDayOfYear(values.year, values.month, values.day),
-    };
+  return {
+    warning_low_threshold: thresholds.warningLowThreshold,
+    warning_high_threshold: thresholds.warningHighThreshold,
+    critical_low_threshold: thresholds.criticalLowThreshold,
+    critical_high_threshold: thresholds.criticalHighThreshold,
+  };
 }
 
-function getLocalTimeFormatter(timeZone) {
-    if (!localTimeFormatterCache.has(timeZone)) {
-        localTimeFormatterCache.set(
-            timeZone,
-            new Intl.DateTimeFormat("en-US", {
-                timeZone,
-                hour12: false,
-                hourCycle: "h23",
-                year: "numeric",
-                month: "2-digit",
-                day: "2-digit",
-                hour: "2-digit",
-                minute: "2-digit",
-            }),
-        );
-    }
-
-    return localTimeFormatterCache.get(timeZone);
+function countBuckets({ startAt, endAt, intervalMinutes }) {
+  if (endAt < startAt) return 0;
+  return Math.floor((endAt.getTime() - startAt.getTime()) / toIntervalMs(intervalMinutes)) + 1;
 }
 
-function getDayOfYear(year, month, day) {
-    const start = Date.UTC(year, 0, 1);
-    const current = Date.UTC(year, month - 1, day);
-    return Math.floor((current - start) / 86400000) + 1;
+function bucketKey(id, bucketAt) {
+  return `${Number(id)}|${toDate(bucketAt, "bucketAt").toISOString()}`;
 }
 
-function clamp(value, min, max) {
-    return Math.min(Math.max(value, min), max);
+function minValue(current, value) {
+  return current === null ? value : Math.min(current, value);
 }
 
-function roundToOne(value) {
-    return Math.round(value * 10) / 10;
+function maxValue(current, value) {
+  return current === null ? value : Math.max(current, value);
 }
 
 function getDemoUsername() {
-    return normalizeConfiguredValue(process.env.DEMO_ACCOUNT_USERNAME) || "demo";
+  return (
+    normalizeConfiguredValue(process.env.DEMO_ACCOUNT_USERNAME) ||
+    demoConfig.account.username
+  );
 }
 
 function getDemoEmail() {
-    return normalizeConfiguredValue(process.env.DEMO_ACCOUNT_EMAIL) || DEFAULT_DEMO_EMAIL;
+  return (
+    normalizeConfiguredValue(process.env.DEMO_ACCOUNT_EMAIL) ||
+    demoConfig.account.email
+  );
 }
 
 function getDemoPassword() {
-    return normalizeConfiguredValue(process.env.DEMO_ACCOUNT_PASSWORD) || DEFAULT_DEMO_PASSWORD;
+  return (
+    normalizeConfiguredValue(process.env.DEMO_ACCOUNT_PASSWORD) ||
+    demoConfig.account.password
+  );
 }
 
 function normalizeConfiguredValue(value) {
-    if (typeof value !== "string") return null;
+  if (typeof value !== "string") return null;
 
-    const normalized = value.trim();
-    return normalized || null;
+  const normalized = value.trim();
+  return normalized || null;
+}
+
+function toDate(value, name) {
+  const date = value instanceof Date ? new Date(value) : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`Invalid ${name} date`);
+  }
+
+  return date;
+}
+
+function toPositiveInteger(value, name) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+
+  return Math.floor(number);
 }
 
 function toEntityId(value, name) {
-    const id = Number(value);
-    if (!Number.isInteger(id) || id <= 0) {
-        throw new Error(`Invalid ${name}`);
-    }
+  const id = Number(value);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error(`Invalid ${name}`);
+  }
 
-    return id;
+  return id;
 }
 
 function isUniqueViolation(err) {
-    return Boolean(err && err.code === "23505");
+  return Boolean(err && err.code === "23505");
 }

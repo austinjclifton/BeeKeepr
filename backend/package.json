@@ -9,6 +9,7 @@
     "db:migrate": "node src/scripts/dbMigrate.js",
     "db:seed:demo": "node src/scripts/dbSeedDemo.js",
     "demo:tick": "node src/scripts/demoTick.js",
+    "demo:backfill": "node src/scripts/demoBackfill.js",
     "test": "node --test"
   },
   "dependencies": {

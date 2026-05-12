@@ -13,6 +13,7 @@ exports.insertAlert = async ({
   direction,
   thresholdValue,
   temperature,
+  createdAt = null,
 }) => {
   try {
     const rows = await query(
@@ -25,9 +26,22 @@ exports.insertAlert = async ({
         severity,
         direction,
         threshold_value,
-        temperature
+        temperature,
+        created_at,
+        updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        COALESCE($9::timestamptz, now()),
+        COALESCE($9::timestamptz, now())
+      )
       RETURNING
         id,
         reading_id,
@@ -48,6 +62,7 @@ exports.insertAlert = async ({
         direction,
         thresholdValue,
         temperature,
+        createdAt,
       ],
     );
 

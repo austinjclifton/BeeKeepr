@@ -11,21 +11,31 @@ const APP_BASE_URL = getAppBaseUrl();
 /**
  * Main entry point from ingest to check if a reading is alert-worthy
  */
-exports.processReading = async (reading) => {
-  if (!reading || !reading.device_id) return;
+exports.processReading = async (reading, options = {}) => {
+  const sendCriticalEmail = options.sendCriticalEmail !== false;
+  const log = options.log !== false;
+  const createdAt = options.createdAt ?? null;
+
+  if (!reading || !reading.device_id) {
+    return { created: false, skipped: true, reason: "missing_device" };
+  }
 
   const ctx = await devicesRepo.getAlertContextForDevice({
     deviceId: reading.device_id,
   });
 
   if (!ctx) {
-    console.log("No alert context found", {
-      deviceId: reading.device_id,
-    });
-    return;
+    if (log) {
+      console.log("No alert context found", {
+        deviceId: reading.device_id,
+      });
+    }
+    return { created: false, skipped: true, reason: "missing_context" };
   }
 
-  if (!ctx.alerts_enabled) return;
+  if (!ctx.alerts_enabled) {
+    return { created: false, skipped: true, reason: "alerts_disabled" };
+  }
 
   if (
     ctx.warning_low_threshold == null ||
@@ -33,19 +43,23 @@ exports.processReading = async (reading) => {
     ctx.critical_low_threshold == null ||
     ctx.critical_high_threshold == null
   ) {
-    console.log(
-      "Skipping alert processing: incomplete threshold configuration",
-      {
-        deviceId: reading.device_id,
-        beekeeperId: ctx.beekeeper_id,
-      },
-    );
-    return;
+    if (log) {
+      console.log(
+        "Skipping alert processing: incomplete threshold configuration",
+        {
+          deviceId: reading.device_id,
+          beekeeperId: ctx.beekeeper_id,
+        },
+      );
+    }
+    return { created: false, skipped: true, reason: "incomplete_thresholds" };
   }
 
   const classification = classifyTemperature(reading.temperature, ctx);
-  if (!classification) return;
-  console.log("NEW READING CLASSIFICATION:", classification);
+  if (!classification) {
+    return { created: false, skipped: true, reason: "not_alert_worthy" };
+  }
+  if (log) console.log("NEW READING CLASSIFICATION:", classification);
 
   // create alert object + store that in DB
   let alert;
@@ -59,23 +73,31 @@ exports.processReading = async (reading) => {
       direction: classification.direction,
       thresholdValue: classification.threshold,
       temperature: reading.temperature,
+      createdAt,
     });
   } catch (err) {
     // suppress duplicate alerts
     if (err.code === "DUPLICATE_ALERT") {
-      console.log("Duplicate alert suppressed", {
-        deviceId: ctx.device_id,
-        hiveId: ctx.hive_id,
-        severity: classification.severity,
-        direction: classification.direction,
-      });
-      return;
+      if (log) {
+        console.log("Duplicate alert suppressed", {
+          deviceId: ctx.device_id,
+          hiveId: ctx.hive_id,
+          severity: classification.severity,
+          direction: classification.direction,
+        });
+      }
+      return {
+        created: false,
+        skipped: true,
+        reason: "duplicate_alert",
+        classification,
+      };
     }
     throw err;
   }
 
   // if the alert is critical, create an email alert
-  if (classification.severity === "critical" && alert) {
+  if (classification.severity === "critical" && alert && sendCriticalEmail) {
     await handleCriticalEmail({
       alertId: alert.id,
       email: ctx.email,
@@ -85,6 +107,8 @@ exports.processReading = async (reading) => {
       direction: classification.direction,
     });
   }
+
+  return { created: Boolean(alert), skipped: !alert, alert, classification };
 };
 
 /**
