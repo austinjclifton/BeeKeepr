@@ -41,17 +41,17 @@ jobs:
 
           echo "Waiting for backend health check..."
 
-for i in {1..30}; do
-  if curl -fsS http://127.0.0.1:4000/api/health; then
-    echo "Backend is healthy"
-    exit 0
-  fi
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:4000/api/health > /dev/null; then
+              echo "Backend is healthy"
+              exit 0
+            fi
 
-  echo "Backend not ready yet, retrying..."
-  sleep 2
-done
+            echo "Backend not ready yet, retrying... ($i/30)"
+            sleep 2
+          done
 
-echo "Backend failed health check"
-pm2 status
-pm2 logs beekeepr-backend --lines 80 --nostream
-exit 1
+          echo "Backend failed health check"
+          pm2 status
+          pm2 logs beekeepr-backend --lines 100 --nostream
+          exit 1
