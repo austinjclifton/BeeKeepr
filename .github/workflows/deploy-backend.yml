@@ -1,0 +1,42 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
+
+  workflow_dispatch:
+
+concurrency:
+  group: beekeepr-backend-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy backend to EC2
+    runs-on: [self-hosted, beekeepr-prod]
+
+    steps:
+      - name: Deploy backend
+        run: |
+          set -euo pipefail
+
+          export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+
+          cd /home/ubuntu/beekeepr
+
+          git fetch origin main
+          git reset --hard origin/main
+
+          cd backend
+
+          npm install
+          npm run db:migrate
+
+          pm2 restart beekeepr-backend --update-env
+          pm2 save
+
+          curl -f http://127.0.0.1:4000/api/health
