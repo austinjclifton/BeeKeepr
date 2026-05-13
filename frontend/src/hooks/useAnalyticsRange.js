@@ -1,4 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import {
+  ANALYTICS_RANGE_KEY,
+  LEGACY_ANALYTICS_RANGE_KEY,
+  readMigratedFlag,
+  writeFlag,
+} from '../storageKeys';
 
 export const ANALYTICS_RANGE_OPTIONS = [
   { value: '1d', label: '1D' },
@@ -11,10 +17,24 @@ export function isAnalyticsRange(value) {
   return ANALYTICS_RANGE_OPTIONS.some(option => option.value === value);
 }
 
-export function useAnalyticsRange(initialRange = '1d') {
-  const [range, setRangeState] = useState(
-    isAnalyticsRange(initialRange) ? initialRange : '1d',
+function loadInitialRange(initialRange) {
+  const fallback = isAnalyticsRange(initialRange) ? initialRange : '1d';
+  const storedRange = readMigratedFlag(
+    ANALYTICS_RANGE_KEY,
+    LEGACY_ANALYTICS_RANGE_KEY,
   );
+
+  return isAnalyticsRange(storedRange) ? storedRange : fallback;
+}
+
+export function useAnalyticsRange(initialRange = '1d') {
+  const [range, setRangeState] = useState(() => loadInitialRange(initialRange));
+
+  useEffect(() => {
+    if (isAnalyticsRange(range)) {
+      writeFlag(ANALYTICS_RANGE_KEY, range);
+    }
+  }, [range]);
 
   const setRange = (nextRange) => {
     if (isAnalyticsRange(nextRange)) setRangeState(nextRange);

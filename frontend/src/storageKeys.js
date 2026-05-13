@@ -2,6 +2,8 @@ export const SETTINGS_PREF_KEY = 'beekeepr_settings_v1';
 export const LEGACY_SETTINGS_PREF_KEY = 'asheville_settings_v1';
 export const THRESHOLDS_SYNC_KEY = 'beekeepr_thresholds_synced_v1';
 export const LEGACY_THRESHOLDS_SYNC_KEY = 'asheville_thresholds_synced_v1';
+export const ANALYTICS_RANGE_KEY = 'beekeepr_analytics_range_v1';
+export const LEGACY_ANALYTICS_RANGE_KEY = 'asheville_analytics_range_v1';
 
 export function readMigratedJson(primaryKey, legacyKey) {
   try {
@@ -22,7 +24,7 @@ export function readMigratedJson(primaryKey, legacyKey) {
 export function writeJson(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
+  } catch { }
 }
 
 export function readMigratedFlag(primaryKey, legacyKey) {
@@ -44,5 +46,5 @@ export function readMigratedFlag(primaryKey, legacyKey) {
 export function writeFlag(key, value) {
   try {
     localStorage.setItem(key, value);
-  } catch {}
+  } catch { }
 }

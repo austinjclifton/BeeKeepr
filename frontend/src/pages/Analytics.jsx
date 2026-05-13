@@ -155,7 +155,7 @@ export default function Analytics() {
   const [startInput, setStartInput] = useState(defaultStartInput);
   const [endInput, setEndInput] = useState(defaultEndInput);
   const [queryError, setQueryError] = useState('');
-  const [appliedQuery, setAppliedQuery] = useState({ range: '7d' });
+  const [appliedQuery, setAppliedQuery] = useState(() => ({ range }));
   const [exportScope, setExportScope] = useState('user');
   const [exportHiveId, setExportHiveId] = useState('');
   const [exportLocationId, setExportLocationId] = useState('');
