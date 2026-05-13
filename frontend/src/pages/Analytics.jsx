@@ -230,10 +230,17 @@ export default function Analytics() {
   useEffect(() => {
     setCompareIds(prev => {
       const valid = prev.filter(id => hiveIds.includes(id));
-      const minimumComparisonCount = selectedLocation ? 0 : 2;
+      const desiredCount = selectedLocation ? Math.min(10, hiveIds.length) : 2;
+
+      if (selectedLocation) {
+        if (valid.length === desiredCount) return valid;
+        if (valid.length > 0) return valid;
+        return hiveIds.slice(0, desiredCount);
+      }
+
       if (
-        valid.length >= minimumComparisonCount ||
-        hiveIds.length < minimumComparisonCount
+        valid.length >= desiredCount ||
+        hiveIds.length < desiredCount
       ) {
         return valid;
       }
