@@ -305,23 +305,62 @@ exports.getHiveTemperatureSeries = async ({
 }) => {
   const rows = await query(
     `
+    WITH owned_hive AS (
+      SELECT
+        h.id,
+        h.location_id
+      FROM hive h
+      WHERE h.beekeeper_id = $1
+        AND h.id = $2
+      LIMIT 1
+    ),
+    internal_points AS (
+      SELECT
+        ${bucketExpression("r.bucket_at", bucketSize)} AS bucket_at,
+        AVG(r.temperature)::double precision AS average_temperature,
+        MIN(r.temperature)::double precision AS min_temperature,
+        MAX(r.temperature)::double precision AS max_temperature,
+        COUNT(r.id)::int AS reading_count
+      FROM owned_hive oh
+      JOIN device d
+        ON d.hive_id = oh.id
+      JOIN reading r
+        ON r.device_id = d.id
+       AND r.bucket_at >= $3::timestamptz
+       AND r.bucket_at < $4::timestamptz
+      GROUP BY 1
+    ),
+    external_points AS (
+      SELECT
+        ${bucketExpression("ec.bucket_at", bucketSize)} AS bucket_at,
+        AVG(ec.temperature)::double precision AS external_temperature
+      FROM owned_hive oh
+      JOIN external_condition ec
+        ON ec.location_id = oh.location_id
+       AND ec.status = 'success'
+       AND ec.temperature IS NOT NULL
+       AND ec.bucket_at >= $3::timestamptz
+       AND ec.bucket_at < $4::timestamptz
+      GROUP BY 1
+    ),
+    buckets AS (
+      SELECT bucket_at FROM internal_points
+      UNION
+      SELECT bucket_at FROM external_points
+    )
     SELECT
-      ${bucketExpression("r.bucket_at", bucketSize)} AS bucket_at,
-      AVG(r.temperature)::double precision AS average_temperature,
-      MIN(r.temperature)::double precision AS min_temperature,
-      MAX(r.temperature)::double precision AS max_temperature,
-      COUNT(r.id)::int AS reading_count
-    FROM hive h
-    JOIN device d
-      ON d.hive_id = h.id
-    JOIN reading r
-      ON r.device_id = d.id
-    WHERE h.beekeeper_id = $1
-      AND h.id = $2
-      AND r.bucket_at >= $3::timestamptz
-      AND r.bucket_at < $4::timestamptz
-    GROUP BY 1
-    ORDER BY 1 ASC
+      b.bucket_at,
+      ip.average_temperature,
+      ip.min_temperature,
+      ip.max_temperature,
+      ip.reading_count,
+      ep.external_temperature
+    FROM buckets b
+    LEFT JOIN internal_points ip
+      ON ip.bucket_at = b.bucket_at
+    LEFT JOIN external_points ep
+      ON ep.bucket_at = b.bucket_at
+    ORDER BY b.bucket_at ASC
     `,
     [beekeeperId, hiveId, startAt, endAt],
   );
@@ -360,6 +399,30 @@ exports.getCompareTemperatureSeries = async ({
     ORDER BY h.id ASC, 2 ASC
     `,
     [beekeeperId, hiveIds, startAt, endAt, locationId],
+  );
+};
+
+exports.getLocationExternalTemperatureSeries = async ({
+  locationId,
+  startAt,
+  endAt,
+  bucketSize,
+}) => {
+  return query(
+    `
+    SELECT
+      ${bucketExpression("ec.bucket_at", bucketSize)} AS bucket_at,
+      AVG(ec.temperature)::double precision AS external_temperature
+    FROM external_condition ec
+    WHERE ec.location_id = $1
+      AND ec.status = 'success'
+      AND ec.temperature IS NOT NULL
+      AND ec.bucket_at >= $2::timestamptz
+      AND ec.bucket_at < $3::timestamptz
+    GROUP BY 1
+    ORDER BY 1 ASC
+    `,
+    [locationId, startAt, endAt],
   );
 };
 

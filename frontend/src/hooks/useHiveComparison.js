@@ -3,6 +3,11 @@ import { getHiveComparison } from '../api';
 
 export function useHiveComparison(hiveIds, query, { enabled = true } = {}) {
   const queryKey = JSON.stringify(query ?? '1d');
+  const hasLocationFilter =
+    query != null &&
+    typeof query === 'object' &&
+    query.locationId != null &&
+    String(query.locationId).trim() !== '';
 
   // Normalize compare IDs
   const ids = useMemo(
@@ -24,7 +29,7 @@ export function useHiveComparison(hiveIds, query, { enabled = true } = {}) {
   useEffect(() => {
     let cancelled = false;
 
-    if (!enabled || ids.length === 0) {
+    if (!enabled || (!hasLocationFilter && ids.length === 0)) {
       setState({ comparison: null, loading: false, error: '' });
       return () => { cancelled = true; };
     }
@@ -47,7 +52,7 @@ export function useHiveComparison(hiveIds, query, { enabled = true } = {}) {
 
     load();
     return () => { cancelled = true; };
-  }, [enabled, ids, queryKey]);
+  }, [enabled, hasLocationFilter, ids, queryKey]);
 
   return state;
 }

@@ -12,6 +12,7 @@ import {
 import { ChartsLabelMark } from '@mui/x-charts/ChartsLabel';
 import { EmptyState, LoadingState } from './StateBlocks';
 import {
+  EXTERNAL_TEMPERATURE_COLOR,
   formatAggregationInterval,
   formatBucketRange,
   formatChartTime,
@@ -44,8 +45,13 @@ export default function MultiHiveComparisonChart({
   if (loading) return <LoadingState label="Loading comparison…" />;
 
   const hives = comparison?.hives ?? [];
+  const externalSeries = comparison?.externalSeries ?? [];
+  const isLocationComparison = comparison?.locationId != null;
+  const hasExternalSeries = externalSeries.some(point =>
+    nullableNumber(point?.temperature ?? point?.externalTemperature) != null,
+  );
   const withData = hives.filter(hive => (hive.series ?? []).length > 0);
-  if (hives.length < 2) {
+  if (!isLocationComparison && hives.length < 2) {
     return (
       <EmptyState
         title="Comparison unavailable"
@@ -53,24 +59,37 @@ export default function MultiHiveComparisonChart({
       />
     );
   }
-  if (!withData.length) {
+  if (isLocationComparison && !hives.length && !hasExternalSeries) {
+    return (
+      <EmptyState
+        title="No location data"
+        detail="Outside conditions are unavailable for this location in the selected range."
+      />
+    );
+  }
+  if (!withData.length && !hasExternalSeries) {
     return (
       <EmptyState
         title="No comparison data"
-        detail="There are no bucketed readings for the selected hives in this range."
+        detail={isLocationComparison
+          ? 'There are no bucketed readings or outside conditions for this location in the selected range.'
+          : 'There are no bucketed readings for the selected hives in this range.'}
       />
     );
   }
 
   const bucketTimes = Array.from(new Set(
-    hives.flatMap(hive => (hive.series ?? []).map(point => point.bucketAt).filter(Boolean)),
+    [
+      ...hives.flatMap(hive => (hive.series ?? []).map(point => point.bucketAt).filter(Boolean)),
+      ...externalSeries.map(point => point?.bucketAt).filter(Boolean),
+    ],
   )).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
   const timestamps = bucketTimes.map(value => new Date(value));
   const domainStart = parseTimelineDate(comparison?.startAt);
   const domainEnd = parseTimelineDate(comparison?.endAt);
   const tickEvery = Math.max(1, Math.ceil(timestamps.length / 8));
-  const showMarks = bucketTimes.length <= 36 && hives.length <= 4;
+  const showMarks = bucketTimes.length <= 36 && (hives.length + (hasExternalSeries ? 1 : 0)) <= 4;
   const allValues = [];
   const series = hives.map((hive, index) => {
     const byBucket = new Map((hive.series ?? []).map(point => [point.bucketAt, point.averageTemperature ?? point.temperature]));
@@ -91,6 +110,28 @@ export default function MultiHiveComparisonChart({
       ),
     };
   });
+
+  if (hasExternalSeries) {
+    const byBucket = new Map(
+      externalSeries.map(point => [point.bucketAt, point.temperature ?? point.externalTemperature]),
+    );
+    const data = bucketTimes.map(bucket => nullableNumber(byBucket.get(bucket)));
+    allValues.push(...data);
+    series.push({
+      data,
+      label: 'External °F',
+      color: EXTERNAL_TEMPERATURE_COLOR,
+      showMark: showMarks,
+      curve: 'monotoneX',
+      valueFormatter: (value, context) => formatFahrenheitWithBucket(
+        value,
+        context,
+        bucketTimes,
+        comparison?.bucketSize,
+        showBucketRangeInTooltip,
+      ),
+    });
+  }
   const [yMin, yMax] = paddedTemperatureDomain(allValues);
 
   return (
@@ -130,6 +171,8 @@ export default function MultiHiveComparisonChart({
       />
       <div className="chart-meta">
         Source readings are stored in 10-minute ingest buckets.
+        {comparison?.locationId ? ' External temperature for the selected location is overlaid when weather data is available.' : ''}
+        {comparison?.locationId && !hasExternalSeries ? ' Outside conditions are unavailable for this location.' : ''}
       </div>
     </>
   );

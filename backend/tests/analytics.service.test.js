@@ -90,6 +90,7 @@ function baseRepo() {
     }),
     getHiveTemperatureSeries: async () => [],
     getCompareTemperatureSeries: async () => [],
+    getLocationExternalTemperatureSeries: async () => [],
     getDashboardHiveTemperature24h: async () => [],
     getDashboardFleetTemperature24h: async () => [],
   };
@@ -193,6 +194,7 @@ test("getHiveTemperatureSeries returns bucketed data for an owned hive", async (
       {
         bucket_at: "2026-05-07T14:00:00.000Z",
         average_temperature: 94.1,
+        external_temperature: 67.8,
         min_temperature: 93.8,
         max_temperature: 94.6,
         reading_count: 6,
@@ -211,6 +213,7 @@ test("getHiveTemperatureSeries returns bucketed data for an owned hive", async (
   assert.equal(captured.hiveId, 5);
   assert.equal(captured.bucketSize, "hour");
   assert.equal(result.series.length, 1);
+  assert.equal(result.series[0].externalTemperature, 67.8);
   assert.equal(result.series[0].readingCount, 6);
 });
 
@@ -344,6 +347,90 @@ test("compareHives rejects unauthorized hives", async () => {
     (err) =>
       err.status === 404 && err.message === "One or more hives not found",
   );
+});
+
+test("compareHives includes location external temperature when a location filter is selected", async () => {
+  let compareCaptured = null;
+  let externalCaptured = null;
+  const repo = baseRepo();
+  const locationsRepo = baseLocationsRepo();
+  locationsRepo.listOwnedByBeekeeper = async () => [{ id: 4, name: 'North Yard' }];
+  repo.getCompareTemperatureSeries = async (input) => {
+    compareCaptured = input;
+    return [
+      {
+        hive_id: 1,
+        bucket_at: "2026-05-07T14:00:00.000Z",
+        average_temperature: 94.1,
+        min_temperature: 93.8,
+        max_temperature: 94.6,
+        reading_count: 6,
+      },
+      {
+        hive_id: 2,
+        bucket_at: "2026-05-07T14:00:00.000Z",
+        average_temperature: 95.4,
+        min_temperature: 95.1,
+        max_temperature: 95.9,
+        reading_count: 6,
+      },
+    ];
+  };
+  repo.getLocationExternalTemperatureSeries = async (input) => {
+    externalCaptured = input;
+    return [
+      {
+        bucket_at: "2026-05-07T14:00:00.000Z",
+        external_temperature: 68.2,
+      },
+    ];
+  };
+
+  const service = buildService({ repoStubs: repo, locationsRepoStubs: locationsRepo });
+  const result = await service.compareHives({
+    beekeeperId: 1,
+    range: "7d",
+    bucket: "hour",
+    hiveIds: "1,2",
+    locationId: "4",
+  });
+
+  assert.equal(compareCaptured.locationId, 4);
+  assert.equal(externalCaptured.locationId, 4);
+  assert.equal(result.locationId, 4);
+  assert.equal(result.externalSeries.length, 1);
+  assert.equal(result.externalSeries[0].temperature, 68.2);
+  assert.equal(result.externalSeries[0].externalTemperature, 68.2);
+});
+
+test("compareHives returns location external temperature without selected hives when a location filter is selected", async () => {
+  let externalCaptured = null;
+  const repo = baseRepo();
+  const locationsRepo = baseLocationsRepo();
+  locationsRepo.listOwnedByBeekeeper = async () => [{ id: 4, name: 'North Yard' }];
+  repo.getLocationExternalTemperatureSeries = async (input) => {
+    externalCaptured = input;
+    return [
+      {
+        bucket_at: "2026-05-07T14:00:00.000Z",
+        external_temperature: 68.2,
+      },
+    ];
+  };
+
+  const service = buildService({ repoStubs: repo, locationsRepoStubs: locationsRepo });
+  const result = await service.compareHives({
+    beekeeperId: 1,
+    range: "7d",
+    bucket: "hour",
+    locationId: "4",
+  });
+
+  assert.equal(externalCaptured.locationId, 4);
+  assert.equal(result.locationId, 4);
+  assert.equal(result.hives.length, 0);
+  assert.equal(result.externalSeries.length, 1);
+  assert.equal(result.externalSeries[0].temperature, 68.2);
 });
 
 test("getHivesStatus maps one item per owned hive with alert counts and health", async () => {
@@ -566,6 +653,8 @@ test("getDashboardFleetTemperature24h returns one 10-minute series per hive", as
 test("compareHives enforces selected location ownership", async () => {
   let captured = null;
   const hivesRepo = baseHivesRepo();
+  const locationsRepo = baseLocationsRepo();
+  locationsRepo.listOwnedByBeekeeper = async () => [{ id: 4, name: 'North Yard' }];
   hivesRepo.findByIdsScoped = async (input) => {
     captured = input;
     return input.hiveIds.map((id) => ({ id, name: `Hive ${id}` }));
@@ -574,6 +663,7 @@ test("compareHives enforces selected location ownership", async () => {
   const service = buildService({
     repoStubs: baseRepo(),
     hivesRepoStubs: hivesRepo,
+    locationsRepoStubs: locationsRepo,
   });
   const result = await service.compareHives({
     beekeeperId: 1,

@@ -4,6 +4,8 @@ export function getHiveId(hive) {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+export const EXTERNAL_TEMPERATURE_COLOR = '#22D3EE';
+
 export function formatTemperature(value, precision = 1) {
   const n = Number(value);
   return Number.isFinite(n) ? `${n.toFixed(precision)}°F` : '—';

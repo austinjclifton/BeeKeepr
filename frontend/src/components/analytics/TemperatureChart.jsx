@@ -1,6 +1,7 @@
 import { LineChart } from '@mui/x-charts/LineChart';
 import { EmptyState, LoadingState } from './StateBlocks';
 import {
+  EXTERNAL_TEMPERATURE_COLOR,
   formatAggregationInterval,
   formatChartTime,
   formatChartTooltipTime,
@@ -24,36 +25,52 @@ export default function TemperatureChart({ series, range, bucketSize, loading = 
   if (loading) return <LoadingState label="Loading temperature trend…" />;
 
   const points = (series || []).filter(point => point?.bucketAt);
-  if (!points.length) {
+  const average = points.map(point => nullableNumber(point.averageTemperature));
+  const minimum = points.map(point => nullableNumber(point.minTemperature));
+  const maximum = points.map(point => nullableNumber(point.maxTemperature));
+  const external = points.map(point => nullableNumber(point.externalTemperature));
+  const hasInternal = [...average, ...minimum, ...maximum].some(value => value != null);
+  const hasExternal = external.some(value => value != null);
+
+  if (!points.length || (!hasInternal && !hasExternal)) {
     return (
       <EmptyState
         title="No temperature data"
-        detail="Readings will appear here after the hive reports telemetry in this range."
+        detail="Internal or outside temperature points will appear here after data is available in this range."
       />
     );
   }
 
   const timestamps = points.map(point => new Date(point.bucketAt));
-  const average = points.map(point => nullableNumber(point.averageTemperature));
-  const minimum = points.map(point => nullableNumber(point.minTemperature));
-  const maximum = points.map(point => nullableNumber(point.maxTemperature));
   const isRawBucket = bucketSize === '10m';
   const tickEvery = Math.max(1, Math.ceil(timestamps.length / 8));
   const showMarks = points.length <= 48;
   const yValues = isRawBucket
-    ? average
-    : [...average, ...minimum, ...maximum];
+    ? [...average, ...external]
+    : [...average, ...minimum, ...maximum, ...external];
   const [yMin, yMax] = paddedTemperatureDomain(yValues);
   const chartSeries = isRawBucket
     ? [
       {
         data: average,
-        label: 'Temperature °F',
+        label: 'Internal °F',
         color: '#F5B942',
         showMark: showMarks,
         curve: 'monotoneX',
         valueFormatter: formatFahrenheit,
       },
+      ...(hasExternal
+        ? [
+          {
+            data: external,
+            label: 'External °F',
+            color: EXTERNAL_TEMPERATURE_COLOR,
+            showMark: showMarks,
+            curve: 'monotoneX',
+            valueFormatter: formatFahrenheit,
+          },
+        ]
+        : []),
     ]
     : [
       {
@@ -80,6 +97,18 @@ export default function TemperatureChart({ series, range, bucketSize, loading = 
         curve: 'monotoneX',
         valueFormatter: formatFahrenheit,
       },
+      ...(hasExternal
+        ? [
+          {
+            data: external,
+            label: 'External °F',
+            color: EXTERNAL_TEMPERATURE_COLOR,
+            showMark: showMarks,
+            curve: 'monotoneX',
+            valueFormatter: formatFahrenheit,
+          },
+        ]
+        : []),
     ];
 
   return (
@@ -116,8 +145,9 @@ export default function TemperatureChart({ series, range, bucketSize, loading = 
       />
       <div className="chart-meta">
         {isRawBucket
-          ? 'Each point is one stored 10-minute temperature reading.'
-          : `Each point is a ${formatAggregationInterval(bucketSize)}; source readings are stored in 10-minute ingest buckets.`}
+          ? 'Each point is one stored 10-minute internal or outside temperature bucket.'
+          : `Each point is a ${formatAggregationInterval(bucketSize)}; source readings are stored in 10-minute ingest buckets and outside temperature is averaged across matching weather buckets.`}
+        {!hasExternal ? ' Outside conditions are unavailable for this hive location.' : ''}
       </div>
     </>
   );

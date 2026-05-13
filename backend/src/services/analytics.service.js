@@ -182,27 +182,52 @@ exports.getHiveTemperatureSeries = async ({ beekeeperId, hiveId, range, start, e
 exports.compareHives = async ({ beekeeperId, range, start, end, bucket, hiveIds, locationId }) => {
   const bkId = requirePositiveInt("beekeeperId", beekeeperId);
   const locId = optionalPositiveInt("locationId", locationId);
-  const ids = parseHiveIds(hiveIds);
+  const ids = parseOptionalHiveIds(hiveIds);
   const rangeInfo = resolveAnalyticsWindow({ range, start, end, bucket });
 
-  const hives = await hivesRepo.findByIdsScoped({
-    beekeeperId: bkId,
-    hiveIds: ids,
-    locationId: locId,
-  });
+  if (!ids.length && !locId) {
+    throw badRequest("hiveIds is required");
+  }
 
-  if (hives.length !== ids.length) {
+  if (locId) {
+    const ownedLocations = await locationsRepo.listOwnedByBeekeeper({ beekeeperId: bkId });
+    if (!ownedLocations.some((row) => Number(row.id) === locId)) {
+      throw notFound("Location not found");
+    }
+  }
+
+  const hives = ids.length
+    ? await hivesRepo.findByIdsScoped({
+      beekeeperId: bkId,
+      hiveIds: ids,
+      locationId: locId,
+    })
+    : [];
+
+  if (ids.length && hives.length !== ids.length) {
     throw notFound("One or more hives not found");
   }
 
-  const rows = await analyticsRepo.getCompareTemperatureSeries({
-    beekeeperId: bkId,
-    hiveIds: ids,
-    startAt: rangeInfo.startAt,
-    endAt: rangeInfo.endAt,
-    bucketSize: rangeInfo.bucketSize,
-    locationId: locId,
-  });
+  const [rows, externalRows] = await Promise.all([
+    ids.length
+      ? analyticsRepo.getCompareTemperatureSeries({
+        beekeeperId: bkId,
+        hiveIds: ids,
+        startAt: rangeInfo.startAt,
+        endAt: rangeInfo.endAt,
+        bucketSize: rangeInfo.bucketSize,
+        locationId: locId,
+      })
+      : Promise.resolve([]),
+    locId
+      ? analyticsRepo.getLocationExternalTemperatureSeries({
+        locationId: locId,
+        startAt: rangeInfo.startAt,
+        endAt: rangeInfo.endAt,
+        bucketSize: rangeInfo.bucketSize,
+      })
+      : Promise.resolve([]),
+  ]);
 
   const byHive = new Map();
   for (const hive of hives) {
@@ -224,6 +249,7 @@ exports.compareHives = async ({ beekeeperId, range, start, end, bucket, hiveIds,
     bucketLabel: rangeInfo.bucketLabel,
     locationId: locId,
     hives: Array.from(byHive.values()),
+    externalSeries: externalRows.map((row) => mapExternalSeriesPoint(row, rangeInfo.bucketSize)),
   };
 };
 
@@ -536,9 +562,22 @@ function mapSeriesPoint(row, bucketSize) {
     bucketEndAt: toIso(addBucketDuration(row.bucket_at, bucketSize)),
     bucketSize,
     averageTemperature: asNumber(row.average_temperature),
+    externalTemperature: asNumber(row.external_temperature),
     minTemperature: asNumber(row.min_temperature),
     maxTemperature: asNumber(row.max_temperature),
     readingCount: asCount(row.reading_count),
+  };
+}
+
+function mapExternalSeriesPoint(row, bucketSize) {
+  const temperature = asNumber(row.external_temperature);
+
+  return {
+    bucketAt: toIso(row.bucket_at),
+    bucketEndAt: toIso(addBucketDuration(row.bucket_at, bucketSize)),
+    bucketSize,
+    temperature,
+    externalTemperature: temperature,
   };
 }
 
@@ -614,6 +653,15 @@ function parseHiveIds(value) {
   }
 
   return ids;
+}
+
+function parseOptionalHiveIds(value) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return [];
+  }
+
+  return parseHiveIds(raw);
 }
 
 function optionalPositiveInt(name, value) {

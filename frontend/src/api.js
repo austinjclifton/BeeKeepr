@@ -145,10 +145,22 @@ export function getHiveTemperatureSeries(hiveId, query = '1d') {
 
 export function getHiveComparison(hiveIds, query = '1d') {
   const ids = Array.from(new Set((hiveIds || []).map(id => requirePositiveId(id, 'hiveId'))));
-  if (!ids.length) {
+  const hasLocationFilter =
+    query != null &&
+    typeof query === 'object' &&
+    query.locationId != null &&
+    String(query.locationId).trim() !== '';
+
+  if (!ids.length && !hasLocationFilter) {
     throw new Error('At least one hive is required');
   }
-  return apiFetch(`/api/analytics/hives/compare?${buildAnalyticsQuery(query)}&hiveIds=${encodeURIComponent(ids.join(','))}`);
+
+  const queryString = buildAnalyticsQuery(query);
+  const hiveIdsParam = ids.length
+    ? `&hiveIds=${encodeURIComponent(ids.join(','))}`
+    : '';
+
+  return apiFetch(`/api/analytics/hives/compare?${queryString}${hiveIdsParam}`);
 }
 
 export function getAnalyticsLocations() {

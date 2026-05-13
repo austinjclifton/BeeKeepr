@@ -230,14 +230,23 @@ export default function Analytics() {
   useEffect(() => {
     setCompareIds(prev => {
       const valid = prev.filter(id => hiveIds.includes(id));
-      if (valid.length >= 2 || hiveIds.length < 2) return valid;
+      const minimumComparisonCount = selectedLocation ? 0 : 2;
+      if (
+        valid.length >= minimumComparisonCount ||
+        hiveIds.length < minimumComparisonCount
+      ) {
+        return valid;
+      }
       return hiveIds.slice(0, Math.min(5, hiveIds.length));
     });
-  }, [hiveIdsKey]);
+  }, [hiveIdsKey, selectedLocation]);
 
   // Multi-hive comparison data
   const comparison = useHiveComparison(compareIds, appliedQuery, {
-    enabled: authReady && !authError && compareIds.length >= 2,
+    enabled:
+      authReady &&
+      !authError &&
+      (selectedLocation ? true : compareIds.length >= 2),
   });
 
   // Selected hive view state
@@ -255,6 +264,7 @@ export default function Analytics() {
     ? `Auto${actualBucketSize ? ` (${formatAggregationInterval(actualBucketSize)})` : ''}`
     : formatAggregationInterval(bucket);
   const locationContext = selectedLocation ? locationDisplayName(selectedLocation) : 'All locations';
+  const minimumComparisonCount = selectedLocation ? 0 : 2;
 
   // Query controls
   const handlePresetRange = (nextRange) => {
@@ -583,8 +593,13 @@ export default function Analytics() {
                           })}
                         </div>
                       </div>
-                      {compareIds.length < 2 ? (
-                        <EmptyState title="Choose another hive" detail="Multi-hive comparison needs at least two selected hives." />
+                      {compareIds.length < minimumComparisonCount ? (
+                        <EmptyState
+                          title={selectedLocation ? 'Choose a hive' : 'Choose another hive'}
+                          detail={selectedLocation
+                            ? 'Location comparison needs at least one selected hive so the location trend can be shown with the outside temperature.'
+                            : 'Multi-hive comparison needs at least two selected hives.'}
+                        />
                       ) : comparison.error ? (
                         <ErrorState message={comparison.error} />
                       ) : (

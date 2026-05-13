@@ -1,6 +1,7 @@
 import { LineChart } from '@mui/x-charts/LineChart';
 import { EmptyState, LoadingState } from './StateBlocks';
 import {
+  EXTERNAL_TEMPERATURE_COLOR,
   formatChartTime,
   formatChartTooltipTime,
   paddedTemperatureDomain,
@@ -88,7 +89,7 @@ export default function DashboardHiveTemperatureChart({
           {
             data: outside,
             label: `External`,
-            color: '#60A5FA',
+            color: EXTERNAL_TEMPERATURE_COLOR,
             showMark: false,
             curve: 'monotoneX',
             valueFormatter: formatFahrenheit,
