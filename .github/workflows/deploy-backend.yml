@@ -39,4 +39,19 @@ jobs:
           pm2 restart beekeepr-backend --update-env
           pm2 save
 
-          curl -f http://127.0.0.1:4000/api/health
+          echo "Waiting for backend health check..."
+
+for i in {1..30}; do
+  if curl -fsS http://127.0.0.1:4000/api/health; then
+    echo "Backend is healthy"
+    exit 0
+  fi
+
+  echo "Backend not ready yet, retrying..."
+  sleep 2
+done
+
+echo "Backend failed health check"
+pm2 status
+pm2 logs beekeepr-backend --lines 80 --nostream
+exit 1
