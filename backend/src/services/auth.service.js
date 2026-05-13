@@ -91,6 +91,17 @@ exports.login = async ({ identifier, password, context }) => {
   return { user: toPublicUser(user), session };
 };
 
+exports.loginDemo = async ({ context }) => {
+  const identifier = normalizeConfiguredValue(process.env.DEMO_ACCOUNT_USERNAME);
+  const password = normalizeConfiguredValue(process.env.DEMO_ACCOUNT_PASSWORD);
+
+  if (!identifier || !password) {
+    throw forbidden("Demo login is not configured");
+  }
+
+  return exports.login({ identifier, password, context });
+};
+
 exports.changePassword = async ({ userId, currentPassword, newPassword }) => {
   validateUserId(userId);
 
@@ -218,6 +229,12 @@ function normalizeIdentifier(identifier) {
 function normalizePassword(password) {
   // Do not trim passwords since whitespace may be intentional
   return password;
+}
+
+function normalizeConfiguredValue(value) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized || null;
 }
 
 function normalizeAlertSettingsPatch({

@@ -107,7 +107,7 @@ cd backend
 npm run demo:tick
 ```
 
-The demo topology contains five hives across two locations: three in Rochester, NY and two in Atlanta, GA. `demo:tick` inserts location-aware external conditions and stable internal hive readings while deduping by the existing uniqueness rules.
+The demo topology contains seven hives across three regions: two in Appalachia, two in western New York, and three in California. `demo:tick` uses each location's configured timezone when generating location-aware external conditions and internal hive readings while deduping by the existing uniqueness rules.
 
 ## API Docs
 

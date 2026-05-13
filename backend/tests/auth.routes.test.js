@@ -88,6 +88,7 @@ function buildTestApp({ authContext, serviceStubs }) {
     exports: {
       register: serviceStubs.register,
       login: serviceStubs.login,
+      loginDemo: serviceStubs.loginDemo,
       resetPassword: serviceStubs.resetPassword,
       changePassword: serviceStubs.changePassword,
       updateBeekeeperAlertSettings: serviceStubs.updateBeekeeperAlertSettings,
@@ -151,6 +152,10 @@ function noops() {
     login: async () => ({
       user: { id: 1, username: "u", email: "u@example.com" },
       session: { sessionToken: "sess-1", csrfToken: "csrf-1" },
+    }),
+    loginDemo: async () => ({
+      user: { id: 1, username: "demo", email: "demo@example.com" },
+      session: { sessionToken: "demo-sess", csrfToken: "demo-csrf" },
     }),
     resetPassword: async () => { },
     changePassword: async () => { },
@@ -266,6 +271,30 @@ test("POST /api/auth/login accepts legacy email field", async () => {
     password: "password123",
     context: undefined,
   });
+});
+
+test("POST /api/auth/demo-login uses configured backend demo credentials", async () => {
+  let captured = null;
+  const stubs = noops();
+  stubs.loginDemo = async (input) => {
+    captured = input;
+    return {
+      user: { id: 5, username: "demo", email: "demo@example.com" },
+      session: { sessionToken: "demo-sess", csrfToken: "demo-csrf" },
+    };
+  };
+
+  const app = buildTestApp({ authContext: null, serviceStubs: stubs });
+
+  const res = await request(app)
+    .post("/api/auth/demo-login")
+    .send({})
+    .expect(200);
+
+  assert.deepEqual(captured, { context: undefined });
+  assert.equal(res.body.user.username, "demo");
+  assert.equal(res.body.csrfToken, "demo-csrf");
+  assert.equal(res.headers["x-session-token"], "demo-sess");
 });
 
 test("POST /api/auth/logout invalidates session and clears cookie", async () => {

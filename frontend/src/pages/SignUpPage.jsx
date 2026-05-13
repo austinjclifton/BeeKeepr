@@ -334,18 +334,6 @@ export default function SignUpPage() {
 
             </form>
           </div>
-
-          {/* Footer */}
-          <div style={{
-            padding: '14px 36px',
-            background: 'var(--surface)',
-            borderTop: '1px solid var(--border)',
-            textAlign: 'center',
-          }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
-              PROTECTED SYSTEM — UNAUTHORIZED ACCESS IS STRICTLY PROHIBITED
-            </div>
-          </div>
         </div>
 
       </div>

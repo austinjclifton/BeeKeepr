@@ -35,6 +35,12 @@ router.post("/register", authController.register);
 router.post("/login", authController.login);
 
 /**
+ * POST /api/auth/demo-login
+ * Authenticates the configured demo account
+ */
+router.post("/demo-login", authController.demoLogin);
+
+/**
  * POST /api/auth/reset-password/request
  * Requests a password reset token (always returns success)
  */

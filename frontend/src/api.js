@@ -1,7 +1,7 @@
 // Shared auth state
 let csrfToken = null;
 let _currentUser = null;
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+const apiBaseUrl = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL || '');
 
 export function setCsrfToken(token) {
   csrfToken = token;
@@ -36,6 +36,16 @@ export async function apiFetch(path, options = {}) {
 export function apiUrl(path) {
   if (!apiBaseUrl || /^https?:\/\//i.test(path)) return path;
   return `${apiBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+function normalizeApiBaseUrl(value) {
+  const trimmed = String(value || '').trim().replace(/\/+$/, '');
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^[a-z0-9.-]+\.[a-z]{2,}([/:?#].*)?$/i.test(trimmed)) {
+    return `https://${trimmed}`;
+  }
+  return trimmed;
 }
 
 export function cToF(c) {

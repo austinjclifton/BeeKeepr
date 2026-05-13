@@ -8,12 +8,10 @@ CREATE TEMP TABLE demo_seed_config ON COMMIT DROP AS
 SELECT
   'demo'::varchar(50) AS username,
   'demo@beekeepr.example'::varchar(254) AS email,
-  '$2b$12$Us5JuS4kq..lLaMCW7SAheF9zIIz1YAXtjEPaUSPIWf7Jg0Dipm3q'::varchar(255) AS placeholder_password_hash,
+  '$2b$12$a7HAquewV.MToLZFbym3uebWDyY3Tcxx9cvheL6f4it7Z7d.YNTVK'::varchar(255) AS placeholder_password_hash,
 
-  'America/New_York'::text AS seed_timezone,
-
-  (TIMESTAMP '2026-04-20 00:00:00' AT TIME ZONE 'America/New_York') AS start_at,
-  (TIMESTAMP '2026-05-11 23:00:00' AT TIME ZONE 'America/New_York') AS end_at,
+  TIMESTAMP '2026-01-01 00:00:00' AS start_local_at,
+  TIMESTAMP '2026-12-31 23:00:00' AS end_local_at,
   interval '10 minutes' AS bucket_interval,
 
   TRUE AS alerts_enabled,
@@ -68,44 +66,64 @@ INSERT INTO demo_location_config (
 )
 VALUES
   (
-    'roc',
-    'Rochester, NY Demo Yard',
-    'Rochester, NY',
+    'app',
+    'Blue Ridge Appalachia Demo Yard',
+    'Asheville, NC',
     'America/New_York',
-    43.1566,
-    -77.6088,
-    54.0,
-    11.0,
-    6.5,
-    0.3,
-    0.18,
-    67.0,
-    18.0,
-    3.0,
-    1.5,
-    TIMESTAMP '2026-04-24 06:00:00',
-    TIMESTAMP '2026-04-25 18:00:00',
-    -5.5
-  ),
-  (
-    'atl',
-    'Atlanta, GA Demo Yard',
-    'Atlanta, GA',
-    'America/New_York',
-    33.7490,
-    -84.3880,
-    66.0,
-    12.0,
-    5.5,
-    1.1,
-    0.15,
-    64.0,
+    35.5951,
+    -82.5515,
+    58.0,
+    10.0,
+    6.2,
+    0.4,
+    0.14,
+    72.0,
     16.0,
     2.4,
-    1.2,
-    TIMESTAMP '2026-05-03 12:00:00',
-    TIMESTAMP '2026-05-04 20:00:00',
-    -3.0
+    1.1,
+    TIMESTAMP '2026-04-12 05:00:00',
+    TIMESTAMP '2026-04-13 18:00:00',
+    -5.0
+  ),
+  (
+    'wny',
+    'Western New York Demo Yard',
+    'Buffalo, NY',
+    'America/New_York',
+    42.8864,
+    -78.8784,
+    52.0,
+    10.5,
+    7.0,
+    0.7,
+    0.11,
+    70.0,
+    17.0,
+    3.5,
+    1.8,
+    TIMESTAMP '2026-02-04 03:00:00',
+    TIMESTAMP '2026-02-05 15:00:00',
+    -6.3
+  ),
+  (
+    'ca',
+    'California Central Valley Demo Yard',
+    'Davis, CA',
+    'America/Los_Angeles',
+    38.5449,
+    -121.7405,
+    64.0,
+    14.0,
+    5.6,
+    1.3,
+    0.09,
+    58.0,
+    12.0,
+    2.2,
+    1.0,
+    TIMESTAMP '2026-09-03 13:00:00',
+    TIMESTAMP '2026-09-05 20:00:00',
+    6.1
   );
 
 CREATE TEMP TABLE demo_hive_config (
@@ -141,74 +159,102 @@ INSERT INTO demo_hive_config (
 )
 VALUES
   (
-    'roc-01',
-    'roc',
-    'Highland Stable Hive',
-    'Rochester demo hive with a stable brood temperature profile',
-    95.0,
+    'app-01',
+    'app',
+    'Blue Ridge Stable Hive',
+    'Appalachia demo hive with a stable brood temperature profile',
+    95.2,
     0.35,
-    0.30,
-    0.025,
-    0.0,
+    0.28,
+    0.024,
+    0.2,
     NULL,
     NULL,
     0
   ),
   (
-    'roc-02',
-    'roc',
-    'Genesee Production Hive',
-    'Rochester demo hive with a short warm ventilation event',
-    95.7,
-    0.55,
-    0.45,
-    0.030,
-    1.1,
-    TIMESTAMP '2026-05-03 13:00:00',
-    TIMESTAMP '2026-05-03 18:30:00',
-    3.3
-  ),
-  (
-    'roc-03',
-    'roc',
-    'Cobbs Hill Cool Hive',
-    'Rochester demo hive with a short overnight cooling event',
-    94.2,
-    0.50,
+    'app-02',
+    'app',
+    'Pisgah Orchard Hive',
+    'Appalachia orchard hive with a short cold ridge-line disturbance',
+    95.0,
+    0.52,
     0.40,
-    0.035,
-    2.0,
-    TIMESTAMP '2026-04-29 04:00:00',
-    TIMESTAMP '2026-04-29 09:00:00',
-    -3.4
+    0.030,
+    1.0,
+    TIMESTAMP '2026-01-22 03:30:00',
+    TIMESTAMP '2026-01-22 08:30:00',
+    -3.1
   ),
   (
-    'atl-01',
-    'atl',
-    'Piedmont Warm Hive',
-    'Atlanta demo hive with stronger afternoon heat pressure',
-    95.6,
-    0.65,
+    'wny-01',
+    'wny',
+    'Lake Erie Stable Hive',
+    'Western New York demo hive with steady brood temperatures near the lakeshore',
+    95.1,
+    0.38,
+    0.30,
+    0.026,
+    0.5,
+    TIMESTAMP '2026-05-09 13:00:00',
+    TIMESTAMP '2026-05-09 14:00:00',
+    2.6
+  ),
+  (
+    'wny-02',
+    'wny',
+    'Niagara Snowbelt Hive',
+    'Western New York demo hive with a brief cold-weather probe disturbance',
+    94.6,
+    0.60,
     0.45,
-    0.040,
-    0.7,
-    TIMESTAMP '2026-05-08 12:00:00',
-    TIMESTAMP '2026-05-08 17:00:00',
-    4.1
+    0.034,
+    2.2,
+    TIMESTAMP '2026-03-06 09:20:00',
+    TIMESTAMP '2026-03-06 09:50:00',
+    -4.4
   ),
   (
-    'atl-02',
-    'atl',
-    'Grant Park Variable Hive',
-    'Atlanta demo hive with a short low-temperature disturbance',
+    'ca-01',
+    'ca',
+    'Yolo Stable Hive',
+    'California Central Valley hive with strong brood regulation and dry summer heat',
+    95.8,
+    0.48,
+    0.34,
+    0.032,
+    0.8,
+    TIMESTAMP '2026-07-27 15:30:00',
+    TIMESTAMP '2026-07-27 22:30:00',
+    3.9
+  ),
+  (
+    'ca-02',
+    'ca',
+    'Delta Orchard Hive',
+    'California orchard hive with a mild midsummer brood regulation dip',
+    95.3,
+    0.56,
+    0.42,
+    0.031,
+    1.6,
+    TIMESTAMP '2026-06-21 15:00:00',
+    TIMESTAMP '2026-06-21 23:00:00',
+    3.2
+  ),
+  (
+    'ca-03',
+    'ca',
+    'Solano Variable Hive',
+    'California demo hive with wider swings and a short warm probe spike',
     94.8,
-    0.75,
-    0.55,
-    0.038,
-    2.7,
-    TIMESTAMP '2026-05-05 02:00:00',
-    TIMESTAMP '2026-05-05 07:00:00',
-    -4.0
+    0.72,
+    0.50,
+    0.036,
+    2.4,
+    TIMESTAMP '2026-10-09 20:40:00',
+    TIMESTAMP '2026-10-09 21:00:00',
+    4.1
   );
 
 CREATE TEMP TABLE demo_device_config (
@@ -229,11 +275,13 @@ INSERT INTO demo_device_config (
   received_delay_seconds
 )
 VALUES
-  ('dev-roc-01', 'roc-01', TIMESTAMP '2026-04-01 09:00:00', -58, 16, 3),
-  ('dev-roc-02', 'roc-02', TIMESTAMP '2026-04-01 09:15:00', -64, 18, 4),
-  ('dev-roc-03', 'roc-03', TIMESTAMP '2026-04-01 09:30:00', -72, 20, 5),
-  ('dev-atl-01', 'atl-01', TIMESTAMP '2026-04-01 10:00:00', -61, 17, 3),
-  ('dev-atl-02', 'atl-02', TIMESTAMP '2026-04-01 10:15:00', -69, 19, 4);
+  ('dev-app-01', 'app-01', TIMESTAMP '2026-04-01 09:00:00', -60, 16, 3),
+  ('dev-app-02', 'app-02', TIMESTAMP '2026-04-01 09:15:00', -65, 18, 4),
+  ('dev-wny-01', 'wny-01', TIMESTAMP '2026-04-01 09:00:00', -62, 17, 3),
+  ('dev-wny-02', 'wny-02', TIMESTAMP '2026-04-01 09:15:00', -70, 20, 5),
+  ('dev-ca-01', 'ca-01', TIMESTAMP '2026-04-01 09:00:00', -59, 15, 3),
+  ('dev-ca-02', 'ca-02', TIMESTAMP '2026-04-01 09:15:00', -65, 17, 4),
+  ('dev-ca-03', 'ca-03', TIMESTAMP '2026-04-01 09:30:00', -69, 19, 4);
 
 -- ============================================================
 -- BEEKEEPER
@@ -298,6 +346,17 @@ JOIN upsert u
   ON u.lat = c.lat
  AND u.lon = c.lon;
 
+CREATE TEMP TABLE demo_location_windows ON COMMIT DROP AS
+SELECT
+  l.*,
+  s.start_local_at,
+  s.end_local_at,
+  s.bucket_interval,
+  s.start_local_at AT TIME ZONE l.timezone_name AS start_at,
+  s.end_local_at AT TIME ZONE l.timezone_name AS end_at
+FROM demo_locations l
+CROSS JOIN demo_seed_config s;
+
 -- ============================================================
 -- HIVES
 -- ============================================================
@@ -316,20 +375,18 @@ INSERT INTO hive (
 )
 SELECT
   b.id,
-  l.location_id,
+  lw.location_id,
   h.name,
   h.notes,
   'active',
-  dc.installed_local_at AT TIME ZONE s.seed_timezone,
+  dc.installed_local_at AT TIME ZONE lw.timezone_name,
   s.warning_low_threshold,
   s.warning_high_threshold,
   s.critical_low_threshold,
   s.critical_high_threshold
 FROM demo_hive_config h
-JOIN demo_location_config lc
-  ON lc.location_code = h.location_code
-JOIN demo_locations l
-  ON l.location_code = h.location_code
+JOIN demo_location_windows lw
+  ON lw.location_code = h.location_code
 JOIN demo_device_config dc
   ON dc.hive_code = h.hive_code
 CROSS JOIN demo_beekeeper b
@@ -343,7 +400,7 @@ WHERE NOT EXISTS (
 
 UPDATE hive existing
 SET
-  location_id = l.location_id,
+  location_id = lw.location_id,
   notes = h.notes,
   status = 'active',
   archived_at = NULL,
@@ -352,8 +409,8 @@ SET
   critical_low_threshold = s.critical_low_threshold,
   critical_high_threshold = s.critical_high_threshold
 FROM demo_hive_config h
-JOIN demo_locations l
-  ON l.location_code = h.location_code
+JOIN demo_location_windows lw
+  ON lw.location_code = h.location_code
 CROSS JOIN demo_beekeeper b
 CROSS JOIN demo_seed_config s
 WHERE existing.beekeeper_id = b.id
@@ -395,12 +452,13 @@ INSERT INTO device (
 )
 SELECT
   h.hive_id,
-  dc.installed_local_at AT TIME ZONE s.seed_timezone,
-  s.end_at
+  dc.installed_local_at AT TIME ZONE lw.timezone_name,
+  lw.end_at
 FROM demo_hives h
 JOIN demo_device_config dc
   ON dc.hive_code = h.hive_code
-CROSS JOIN demo_seed_config s
+JOIN demo_location_windows lw
+  ON lw.location_code = h.location_code
 WHERE NOT EXISTS (
   SELECT 1
   FROM device existing
@@ -409,9 +467,10 @@ WHERE NOT EXISTS (
 
 UPDATE device existing
 SET
-  last_seen_at = s.end_at
+  last_seen_at = lw.end_at
 FROM demo_hives h
-CROSS JOIN demo_seed_config s
+JOIN demo_location_windows lw
+  ON lw.location_code = h.location_code
 WHERE existing.hive_id = h.hive_id;
 
 CREATE TEMP TABLE demo_devices ON COMMIT DROP AS
@@ -435,49 +494,52 @@ JOIN demo_device_config dc
 CREATE TEMP TABLE demo_weather_buckets ON COMMIT DROP AS
 WITH buckets AS (
   SELECT
+    lw.location_code,
+    lw.location_id,
+    lw.name AS location_name,
+    lw.city_name,
+    lw.timezone_name,
     gs.bucket_at,
-    s.start_at,
-    s.end_at,
-    EXTRACT(EPOCH FROM (gs.bucket_at - s.start_at)) / 3600.0 AS hours_since_start,
-    EXTRACT(EPOCH FROM (gs.bucket_at - s.start_at)) / 86400.0 AS days_since_start
-  FROM demo_seed_config s
+    EXTRACT(EPOCH FROM (gs.bucket_at - lw.start_at)) / 3600.0 AS hours_since_start,
+    EXTRACT(EPOCH FROM (gs.bucket_at - lw.start_at)) / 86400.0 AS days_since_start
+  FROM demo_location_windows lw
   CROSS JOIN LATERAL generate_series(
-    s.start_at,
-    s.end_at,
-    s.bucket_interval
+    lw.start_at,
+    lw.end_at,
+    lw.bucket_interval
   ) AS gs(bucket_at)
 ),
 prepared AS (
   SELECT
-    l.location_code,
-    l.location_id,
-    l.name AS location_name,
-    l.city_name,
-    l.timezone_name,
     b.bucket_at,
+    b.location_code,
+    b.location_id,
+    b.location_name,
+    b.city_name,
+    b.timezone_name,
     b.hours_since_start,
     b.days_since_start,
-    EXTRACT(HOUR FROM b.bucket_at AT TIME ZONE l.timezone_name)
-      + EXTRACT(MINUTE FROM b.bucket_at AT TIME ZONE l.timezone_name) / 60.0 AS local_hour,
+    EXTRACT(HOUR FROM b.bucket_at AT TIME ZONE b.timezone_name)
+      + EXTRACT(MINUTE FROM b.bucket_at AT TIME ZONE b.timezone_name) / 60.0 AS local_hour,
 
     (
-      l.external_base_temp
-      + l.external_daily_amp
+      lw.external_base_temp
+      + lw.external_daily_amp
         * sin(2 * pi() * (
             (
-              EXTRACT(HOUR FROM b.bucket_at AT TIME ZONE l.timezone_name)
-              + EXTRACT(MINUTE FROM b.bucket_at AT TIME ZONE l.timezone_name) / 60.0
+              EXTRACT(HOUR FROM b.bucket_at AT TIME ZONE b.timezone_name)
+              + EXTRACT(MINUTE FROM b.bucket_at AT TIME ZONE b.timezone_name) / 60.0
             ) - 15
           ) / 24)
-      + l.external_long_amp
-        * sin(2 * pi() * b.days_since_start / 7 + l.external_phase_shift)
-      + l.external_warming_trend * b.days_since_start
+      + lw.external_long_amp
+        * sin(2 * pi() * b.days_since_start / 7 + lw.external_phase_shift)
+      + lw.external_warming_trend * b.days_since_start
       + CASE
-          WHEN l.weather_event_start_local IS NOT NULL
-           AND l.weather_event_end_local IS NOT NULL
-           AND b.bucket_at >= l.weather_event_start_local AT TIME ZONE l.timezone_name
-           AND b.bucket_at <= l.weather_event_end_local AT TIME ZONE l.timezone_name
-            THEN l.weather_event_delta
+          WHEN lw.weather_event_start_local IS NOT NULL
+           AND lw.weather_event_end_local IS NOT NULL
+           AND b.bucket_at >= lw.weather_event_start_local AT TIME ZONE b.timezone_name
+           AND b.bucket_at <= lw.weather_event_end_local AT TIME ZONE b.timezone_name
+            THEN lw.weather_event_delta
           ELSE 0
         END
     ) AS temperature,
@@ -486,22 +548,22 @@ prepared AS (
       30,
       LEAST(
         96,
-        l.humidity_base
-        + l.humidity_daily_amp
+        lw.humidity_base
+        + lw.humidity_daily_amp
           * sin(2 * pi() * (
               (
-                EXTRACT(HOUR FROM b.bucket_at AT TIME ZONE l.timezone_name)
-                + EXTRACT(MINUTE FROM b.bucket_at AT TIME ZONE l.timezone_name) / 60.0
+                EXTRACT(HOUR FROM b.bucket_at AT TIME ZONE b.timezone_name)
+                + EXTRACT(MINUTE FROM b.bucket_at AT TIME ZONE b.timezone_name) / 60.0
               ) + 5
             ) / 24)
-        + 8 * sin(2 * pi() * b.days_since_start / 5 + l.external_phase_shift)
+        + 8 * sin(2 * pi() * b.days_since_start / 5 + lw.external_phase_shift)
       )
     ) AS humidity_pct,
 
     GREATEST(
       0.5,
-      l.wind_base_mps
-      + l.wind_amp_mps * sin(2 * pi() * b.days_since_start / 3 + l.external_phase_shift)
+      lw.wind_base_mps
+      + lw.wind_amp_mps * sin(2 * pi() * b.days_since_start / 3 + lw.external_phase_shift)
       + 0.8 * abs(sin(2 * pi() * b.hours_since_start / 18))
     ) AS wind_mps,
 
@@ -510,16 +572,16 @@ prepared AS (
       LEAST(
         98,
         52
-        + 28 * sin(2 * pi() * b.days_since_start / 6 + l.external_phase_shift)
+        + 28 * sin(2 * pi() * b.days_since_start / 6 + lw.external_phase_shift)
         + 14 * abs(sin(2 * pi() * b.hours_since_start / 12))
       )
     ) AS cloud_pct,
 
     1013
-      + 7 * sin(2 * pi() * b.days_since_start / 9 + l.external_phase_shift) AS pressure_hpa
+      + 7 * sin(2 * pi() * b.days_since_start / 9 + lw.external_phase_shift) AS pressure_hpa
   FROM buckets b
-  JOIN demo_locations l
-    ON TRUE
+  JOIN demo_location_windows lw
+    ON lw.location_code = b.location_code
 )
 SELECT
   location_code,
@@ -534,12 +596,16 @@ SELECT
   ROUND(temperature::numeric, 2)::double precision AS temperature,
   ROUND(humidity_pct::numeric, 1)::double precision AS humidity_pct,
   CASE
-    WHEN location_code = 'roc'
-     AND MOD(FLOOR(days_since_start)::int, 8) IN (3, 4)
-      THEN ROUND((0.08 + 0.16 * abs(sin(2 * pi() * local_hour / 24)))::numeric, 2)::double precision
-    WHEN location_code = 'atl'
-     AND MOD(FLOOR(days_since_start)::int, 7) IN (1, 2)
-      THEN ROUND((0.12 + 0.22 * abs(sin(2 * pi() * local_hour / 24)))::numeric, 2)::double precision
+    WHEN location_code = 'app'
+     AND MOD(FLOOR(days_since_start)::int, 9) IN (2, 3, 4)
+      THEN ROUND((0.10 + 0.18 * abs(sin(2 * pi() * local_hour / 24)))::numeric, 2)::double precision
+    WHEN location_code = 'wny'
+     AND MOD(FLOOR(days_since_start)::int, 7) IN (4, 5)
+      THEN ROUND((0.09 + 0.14 * abs(sin(2 * pi() * local_hour / 24)))::numeric, 2)::double precision
+    WHEN location_code = 'ca'
+     AND EXTRACT(MONTH FROM bucket_at AT TIME ZONE timezone_name) IN (1, 2, 3, 11, 12)
+     AND MOD(FLOOR(days_since_start)::int, 11) IN (5, 6)
+      THEN ROUND((0.04 + 0.09 * abs(sin(2 * pi() * local_hour / 24)))::numeric, 2)::double precision
     ELSE NULL
   END AS precip_mm,
   ROUND(wind_mps::numeric, 2)::double precision AS wind_mps,
@@ -625,8 +691,9 @@ WITH prepared AS (
         * (
             w.temperature
             - CASE
-                WHEN d.location_code = 'atl' THEN 68
-                ELSE 58
+                WHEN d.location_code = 'ca' THEN 68
+                WHEN d.location_code = 'app' THEN 60
+                ELSE 57
               END
           )
       + CASE
@@ -692,7 +759,7 @@ WITH candidates AS (
     h.critical_low_threshold,
     h.critical_high_threshold,
     r.bucket_at,
-    s.end_at,
+    lw.end_at,
 
     CASE
       WHEN r.temperature < h.critical_low_threshold
@@ -726,11 +793,12 @@ WITH candidates AS (
   FROM demo_hives h
   JOIN demo_devices d
     ON d.hive_id = h.hive_id
+  JOIN demo_location_windows lw
+    ON lw.location_code = h.location_code
   JOIN reading r
     ON r.device_id = d.device_id
-  CROSS JOIN demo_seed_config s
-  WHERE r.bucket_at >= s.start_at
-    AND r.bucket_at <= s.end_at
+  WHERE r.bucket_at >= lw.start_at
+    AND r.bucket_at <= lw.end_at
 )
 INSERT INTO alert (
   reading_id,
@@ -796,27 +864,28 @@ SELECT
     FROM reading r
     JOIN demo_devices d
       ON d.device_id = r.device_id
-    CROSS JOIN demo_seed_config s
-    WHERE r.bucket_at >= s.start_at
-      AND r.bucket_at <= s.end_at
+    JOIN demo_location_windows lw
+      ON lw.location_code = d.location_code
+    WHERE r.bucket_at >= lw.start_at
+      AND r.bucket_at <= lw.end_at
   ) AS readings_seeded,
   (
     SELECT COUNT(*)
     FROM external_condition ec
-    JOIN demo_locations l
-      ON l.location_id = ec.location_id
-    CROSS JOIN demo_seed_config s
-    WHERE ec.bucket_at >= s.start_at
-      AND ec.bucket_at <= s.end_at
+    JOIN demo_location_windows lw
+      ON lw.location_id = ec.location_id
+    WHERE ec.bucket_at >= lw.start_at
+      AND ec.bucket_at <= lw.end_at
   ) AS external_conditions_seeded,
   (
     SELECT COUNT(*)
     FROM alert a
     JOIN demo_hives h
       ON h.hive_id = a.hive_id
-    CROSS JOIN demo_seed_config s
-    WHERE a.created_at >= s.start_at
-      AND a.created_at <= s.end_at + interval '1 hour'
+    JOIN demo_location_windows lw
+      ON lw.location_code = h.location_code
+    WHERE a.created_at >= lw.start_at
+      AND a.created_at <= lw.end_at + interval '1 hour'
   ) AS alerts_seeded;
 
 COMMIT;

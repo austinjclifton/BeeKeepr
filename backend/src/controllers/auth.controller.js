@@ -108,6 +108,27 @@ exports.login = async (req, res, next) => {
 };
 
 /**
+ * POST /api/auth/demo-login
+ * Authenticate the configured demo account without exposing credentials
+ */
+exports.demoLogin = async (req, res, next) => {
+  try {
+    const result = await authService.loginDemo({
+      context: req.context,
+    });
+
+    setSessionCookie(res, result.session.sessionToken);
+
+    return res.status(200).json({
+      user: result.user,
+      csrfToken: result.session.csrfToken,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+/**
  * POST /api/auth/logout
  * Invalidate the current session
  */

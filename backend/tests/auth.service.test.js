@@ -239,6 +239,86 @@ test("login resolves email lookup through DB-level identifier query", async () =
   assert.equal(result.user.email, "beek@example.com");
 });
 
+test("loginDemo authenticates with backend demo env credentials", async () => {
+  const priorUsername = process.env.DEMO_ACCOUNT_USERNAME;
+  const priorPassword = process.env.DEMO_ACCOUNT_PASSWORD;
+  process.env.DEMO_ACCOUNT_USERNAME = "demo";
+  process.env.DEMO_ACCOUNT_PASSWORD = "Demopass272!";
+
+  try {
+    let lookup = null;
+    let compare = null;
+    let sessionInput = null;
+    const users = baseUsersRepo();
+    users.findByLoginIdentifier = async (input) => {
+      lookup = input;
+      return {
+        id: 9,
+        username: "demo",
+        email: "demo@example.com",
+        password_hash: "hash:Demopass272!",
+      };
+    };
+
+    const bcrypt = baseBcrypt();
+    bcrypt.compare = async (plain, hash) => {
+      compare = { plain, hash };
+      return true;
+    };
+
+    const sessions = baseSessions();
+    sessions.createSession = async (input) => {
+      sessionInput = input;
+      return { sessionToken: "demo-sess", csrfToken: "demo-csrf" };
+    };
+
+    const svc = buildService({
+      usersRepoStubs: users,
+      sessionsStubs: sessions,
+      bcryptStubs: bcrypt,
+    });
+
+    const result = await svc.loginDemo({ context: { ip: "127.0.0.1" } });
+
+    assert.deepEqual(lookup, { identifier: "demo", email: "demo" });
+    assert.deepEqual(compare, {
+      plain: "Demopass272!",
+      hash: "hash:Demopass272!",
+    });
+    assert.deepEqual(sessionInput, {
+      beekeeperId: 9,
+      context: { ip: "127.0.0.1" },
+    });
+    assert.equal(result.user.username, "demo");
+  } finally {
+    restoreEnv("DEMO_ACCOUNT_USERNAME", priorUsername);
+    restoreEnv("DEMO_ACCOUNT_PASSWORD", priorPassword);
+  }
+});
+
+test("loginDemo rejects when backend demo credentials are not configured", async () => {
+  const priorUsername = process.env.DEMO_ACCOUNT_USERNAME;
+  const priorPassword = process.env.DEMO_ACCOUNT_PASSWORD;
+  delete process.env.DEMO_ACCOUNT_USERNAME;
+  delete process.env.DEMO_ACCOUNT_PASSWORD;
+
+  try {
+    const svc = buildService({
+      usersRepoStubs: baseUsersRepo(),
+      sessionsStubs: baseSessions(),
+      bcryptStubs: baseBcrypt(),
+    });
+
+    await assert.rejects(
+      () => svc.loginDemo({}),
+      (err) => err.status === 403 && err.message === "Demo login is not configured",
+    );
+  } finally {
+    restoreEnv("DEMO_ACCOUNT_USERNAME", priorUsername);
+    restoreEnv("DEMO_ACCOUNT_PASSWORD", priorPassword);
+  }
+});
+
 test("changePassword rejects when new matches current", async () => {
   const svc = buildService({
     usersRepoStubs: baseUsersRepo(),
@@ -424,3 +504,12 @@ test("updateBeekeeperAlertSettings normalizes and maps updated settings", async 
   assert.equal(result.propagatedHiveCount, 3);
   assert.equal(result.updatedAt, "2026-03-31T12:00:00.000Z");
 });
+
+function restoreEnv(name, value) {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+
+  process.env[name] = value;
+}

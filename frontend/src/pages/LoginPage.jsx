@@ -4,7 +4,6 @@ import { apiFetch, setCsrfToken, setCurrentUser } from '../api';
 
 const SHOW_DEMO_LOGIN = import.meta.env.VITE_SHOW_DEMO_LOGIN === 'true';
 const DEMO_USERNAME = import.meta.env.VITE_DEMO_USERNAME || '';
-const DEMO_PASSWORD = import.meta.env.VITE_DEMO_PASSWORD || '';
 
 function ForgotPasswordModal({ onClose }) {
   const [email, setEmail] = useState('');
@@ -116,7 +115,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const demoConfigured = SHOW_DEMO_LOGIN && DEMO_USERNAME && DEMO_PASSWORD;
+  const demoConfigured = SHOW_DEMO_LOGIN;
 
   const performLogin = async (identifier, loginPassword) => {
     setError('');
@@ -141,18 +140,24 @@ export default function LoginPage() {
     await performLogin(identifier, password);
   };
 
-  const fillDemoCredentials = () => {
-    if (!demoConfigured) return;
-    setIdentifier(DEMO_USERNAME);
-    setPassword(DEMO_PASSWORD);
-    setError('');
-  };
-
   const loginWithDemoAccount = async () => {
     if (!demoConfigured) return;
-    setIdentifier(DEMO_USERNAME);
-    setPassword(DEMO_PASSWORD);
-    await performLogin(DEMO_USERNAME, DEMO_PASSWORD);
+    setError('');
+    setLoading(true);
+    try {
+      const data = await apiFetch('/api/auth/demo-login', {
+        method: 'POST',
+      });
+      setCsrfToken(data.csrfToken);
+      setCurrentUser(data.user);
+      setIdentifier(data.user?.username || DEMO_USERNAME || '');
+      setPassword('');
+      navigate('/dashboard');
+    } catch (err) {
+      setError(err.message || 'Demo login failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -233,20 +238,11 @@ export default function LoginPage() {
                       Demo Account
                     </div>
                     <div style={{ marginTop: '4px', color: 'var(--text-secondary)', fontSize: '13px', lineHeight: 1.5 }}>
-                      {demoConfigured
-                        ? 'Use the read-only demo account to explore BeeKeepr with sample hive data.'
-                        : 'Demo login is enabled, but credentials are not configured for this environment.'}
+                      Use the read-only demo account to explore BeeKeepr with sample hive data.
                     </div>
                   </div>
                   {demoConfigured && (
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        onClick={fillDemoCredentials}
-                        className="ghost-btn"
-                      >
-                        Use demo credentials
-                      </button>
                       <button
                         type="button"
                         onClick={loginWithDemoAccount}
@@ -412,18 +408,6 @@ export default function LoginPage() {
               </button>
 
             </form>
-          </div>
-
-          {/* Footer */}
-          <div style={{
-            padding: '14px 36px',
-            background: 'var(--surface)',
-            borderTop: '1px solid var(--border)',
-            textAlign: 'center',
-          }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
-              PROTECTED SYSTEM — UNAUTHORIZED ACCESS IS STRICTLY PROHIBITED
-            </div>
           </div>
         </div>
 

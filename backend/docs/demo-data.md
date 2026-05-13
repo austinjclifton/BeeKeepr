@@ -6,7 +6,7 @@ Edit that file to change:
 
 - Demo account defaults: `account.username`, `account.email`, `account.password`
 - Default history window and cadence: `history.months`, `history.intervalMinutes`
-- Demo yards: `locations[].lat`, `locations[].lon`, `locations[].climate`
+- Demo yards: `locations[].timeZone`, `locations[].lat`, `locations[].lon`, `locations[].climate`
 - Hive topology: `hives[].locationKey`, names, notes, install dates, internal baselines, strength, and RSSI profile
 - Planned anomaly scenarios: `hives[].scenarios`
 
@@ -27,6 +27,8 @@ npm run demo:backfill
 ```
 
 By default this generates the configured 18-month history at 10-minute intervals, ending at the current bucket. It inserts external conditions and hive readings with uniqueness-aware dedupe behavior and prints inserted/skipped counts by table, location, and hive.
+
+Each location is simulated against its own configured timezone, so multi-region demo yards keep their daily weather and brood cycles aligned to local clock time.
 
 Backfill does not create alerts unless requested:
 

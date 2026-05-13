@@ -221,19 +221,19 @@ test("ensureDemoSeed creates the expected demo topology", async () => {
     const result = await demoDataService.ensureDemoSeed();
 
     assert.equal(result.beekeeper.username, "demo");
-    assert.equal(result.locations.length, 2);
-    assert.equal(result.hives.length, 5);
+    assert.equal(result.locations.length, 3);
+    assert.equal(result.hives.length, 7);
     assert.equal(state.createdUsers.length, 1);
-    assert.equal(state.locationCalls.length, 2);
-    assert.equal(state.createdHives.length, 5);
-    assert.equal(state.createdDevices.length, 5);
+    assert.equal(state.locationCalls.length, 3);
+    assert.equal(state.createdHives.length, 7);
+    assert.equal(state.createdDevices.length, 7);
     assert.deepEqual(
         result.hives.map((hive) => hive.locationKey),
-        ["roc", "roc", "roc", "atl", "atl"],
+        ["app", "app", "wny", "wny", "ca", "ca", "ca"],
     );
 });
 
-test("runDemoTick upserts two locations and inserts one current 10-minute bucket", async () => {
+test("runDemoTick upserts three regional locations and inserts one current 10-minute bucket", async () => {
     const { stubs, state } = buildDemoStubs();
     const demoDataService = loadDemoDataService(stubs);
 
@@ -242,17 +242,16 @@ test("runDemoTick upserts two locations and inserts one current 10-minute bucket
     });
 
     assert.equal(result.bucketAt, "2026-05-11T16:20:00.000Z");
-    assert.equal(result.externalConditionsUpserted, 2);
-    assert.equal(state.externalUpserts.length, 2);
-    assert.equal(state.readingInserts.length, 5);
-    assert.equal(state.touchedDevices.length, 5);
-    assert.equal(result.readingsInserted, 2);
-    assert.equal(result.readingsSkipped, 3);
+    assert.equal(result.externalConditionsUpserted, 3);
+    assert.equal(state.externalUpserts.length, 3);
+    assert.equal(state.readingInserts.length, 7);
+    assert.equal(state.touchedDevices.length, 7);
+    assert.equal(result.readingsInserted, 3);
+    assert.equal(result.readingsSkipped, 4);
     assert.equal(state.alerts.length, 0);
 
-    const rochester = state.externalUpserts.find((entry) => entry.locationId === 1);
-    const atlanta = state.externalUpserts.find((entry) => entry.locationId === 2);
-    assert.ok(rochester.temperature < atlanta.temperature);
+    const locationKeys = state.externalUpserts.map((entry) => entry.locationKey).sort();
+    assert.deepEqual(locationKeys, ["app", "ca", "wny"]);
     assert.ok(state.readingInserts.every((entry) => entry.temperature >= 92));
     assert.ok(state.readingInserts.every((entry) => entry.temperature <= 98));
 });
@@ -270,11 +269,11 @@ test("runDemoBackfill generates a bounded historical range without alerts by def
     assert.equal(result.startAt, "2026-05-10T00:00:00.000Z");
     assert.equal(result.endAt, "2026-05-10T00:10:00.000Z");
     assert.equal(result.buckets, 2);
-    assert.equal(result.tables.external_condition.inserted, 4);
-    assert.equal(result.tables.reading.inserted, 4);
-    assert.equal(result.tables.reading.skipped, 6);
+    assert.equal(result.tables.external_condition.inserted, 6);
+    assert.equal(result.tables.reading.inserted, 6);
+    assert.equal(result.tables.reading.skipped, 8);
     assert.equal(result.tables.alert.created, 0);
-    assert.equal(state.externalUpserts.length, 4);
-    assert.equal(state.readingInserts.length, 10);
-    assert.equal(state.touchedDevices.length, 5);
+    assert.equal(state.externalUpserts.length, 6);
+    assert.equal(state.readingInserts.length, 14);
+    assert.equal(state.touchedDevices.length, 7);
 });
