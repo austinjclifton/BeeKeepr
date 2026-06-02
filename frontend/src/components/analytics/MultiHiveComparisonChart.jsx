@@ -27,6 +27,7 @@ const chartSx = {
   '& .MuiChartsAxis-tickLabel': { fill: 'rgba(255,255,255,0.58)', fontSize: 11 },
   '& .MuiChartsLegend-label': { fill: 'rgba(255,255,255,0.72)' },
   '& .MuiChartsGrid-line': { stroke: 'rgba(255,255,255,0.08)' },
+  '& .MuiLineElement-root': { strokeLinecap: 'round', strokeLinejoin: 'round' },
   '& .MuiChartsTooltip-paper': {
     backgroundColor: '#151515',
     border: '1px solid #2A2A2A',
@@ -80,8 +81,8 @@ export default function MultiHiveComparisonChart({
 
   const bucketTimes = Array.from(new Set(
     [
-      ...hives.flatMap(hive => (hive.series ?? []).map(point => parseBucketTime(point?.bucketAt)).filter(value => value != null)),
-      ...externalSeries.map(point => parseBucketTime(point?.bucketAt)).filter(value => value != null),
+      ...hives.flatMap(hive => (hive.series ?? []).map(point => parseBucketTime(point?.bucketAt, comparison?.bucketSize)).filter(value => value != null)),
+      ...externalSeries.map(point => parseBucketTime(point?.bucketAt, comparison?.bucketSize)).filter(value => value != null),
     ],
   )).sort((a, b) => a - b);
 
@@ -95,6 +96,7 @@ export default function MultiHiveComparisonChart({
     const byBucket = toBucketValueMap(
       hive.series,
       point => point.averageTemperature ?? point.temperature,
+      comparison?.bucketSize,
     );
     const data = bucketTimes.map(bucket => nullableNumber(byBucket.get(bucket)));
     allValues.push(...data);
@@ -118,6 +120,7 @@ export default function MultiHiveComparisonChart({
     const byBucket = toBucketValueMap(
       externalSeries,
       point => point.temperature ?? point.externalTemperature,
+      comparison?.bucketSize,
     );
     const data = bucketTimes.map(bucket => nullableNumber(byBucket.get(bucket)));
     allValues.push(...data);
@@ -136,7 +139,7 @@ export default function MultiHiveComparisonChart({
       ),
     });
   }
-  const [yMin, yMax] = paddedTemperatureDomain(allValues);
+  const [yMin, yMax] = comparisonTemperatureDomain(allValues, comparison);
 
   return (
     <>
@@ -170,7 +173,10 @@ export default function MultiHiveComparisonChart({
         grid={{ horizontal: true, vertical: true }}
         axisHighlight={{ x: 'line' }}
         slots={{ tooltip: SortedAxisTooltip }}
-        slotProps={{ tooltip: { trigger: 'axis', anchor: 'pointer' } }}
+        slotProps={{
+          tooltip: { trigger: 'axis', anchor: 'pointer' },
+          line: { strokeLinecap: 'round', strokeLinejoin: 'round' },
+        }}
         sx={chartSx}
       />
       <div className="chart-meta">
@@ -237,28 +243,92 @@ function nullableNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-function parseBucketTime(value) {
+function parseBucketTime(value, bucketSize) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
-  const time = date.getTime();
+  const normalized = normalizeBucketDate(date, bucketSize);
+  const time = normalized?.getTime();
   return Number.isFinite(time) ? time : null;
 }
 
-function toBucketValueMap(series, getValue) {
-  const byBucket = new Map();
+function toBucketValueMap(series, getValue, bucketSize) {
+  const aggregates = new Map();
 
   for (const point of series ?? []) {
-    const bucketAt = parseBucketTime(point?.bucketAt);
+    const bucketAt = parseBucketTime(point?.bucketAt, bucketSize);
     if (bucketAt == null) continue;
 
-    const value = getValue(point);
-    // Keep the latest non-null value for duplicate bucket timestamps
-    if (!byBucket.has(bucketAt) || nullableNumber(value) != null) {
-      byBucket.set(bucketAt, value);
+    const value = nullableNumber(getValue(point));
+    if (value == null) continue;
+
+    const current = aggregates.get(bucketAt);
+    if (current) {
+      current.sum += value;
+      current.count += 1;
+    } else {
+      aggregates.set(bucketAt, { sum: value, count: 1 });
     }
   }
 
-  return byBucket;
+  return new Map(Array.from(aggregates.entries(), ([bucketAt, aggregate]) => [
+    bucketAt,
+    aggregate.sum / aggregate.count,
+  ]));
+}
+
+function comparisonTemperatureDomain(values, comparison) {
+  const baseDomain = paddedTemperatureDomain(values);
+
+  if (comparison?.mode !== 'dashboard' || comparison?.bucketSize !== '10m') {
+    return baseDomain;
+  }
+
+  return expandDomainToMinSpan(baseDomain, 12);
+}
+
+function expandDomainToMinSpan(domain, minSpan) {
+  const [min, max] = domain;
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return domain;
+
+  const span = max - min;
+  if (span >= minSpan) return domain;
+
+  const pad = (minSpan - span) / 2;
+  return [
+    Math.floor((min - pad) * 10) / 10,
+    Math.ceil((max + pad) * 10) / 10,
+  ];
+}
+
+function normalizeBucketDate(date, bucketSize) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+
+  const normalized = new Date(date);
+  normalized.setUTCSeconds(0, 0);
+
+  if (bucketSize === 'day') {
+    normalized.setUTCHours(0, 0, 0, 0);
+    return normalized;
+  }
+
+  if (bucketSize === '6h') {
+    normalized.setUTCMinutes(0, 0, 0);
+    normalized.setUTCHours(Math.floor(normalized.getUTCHours() / 6) * 6, 0, 0, 0);
+    return normalized;
+  }
+
+  if (bucketSize === 'hour') {
+    normalized.setUTCMinutes(0, 0, 0);
+    return normalized;
+  }
+
+  if (bucketSize === '30m') {
+    normalized.setUTCMinutes(Math.floor(normalized.getUTCMinutes() / 30) * 30, 0, 0);
+    return normalized;
+  }
+
+  normalized.setUTCMinutes(Math.floor(normalized.getUTCMinutes() / 10) * 10, 0, 0);
+  return normalized;
 }
 
 function sortTooltipSeriesItems(seriesItems) {
