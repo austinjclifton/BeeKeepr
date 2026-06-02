@@ -277,3 +277,45 @@ test("runDemoBackfill generates a bounded historical range without alerts by def
     assert.equal(state.readingInserts.length, 14);
     assert.equal(state.touchedDevices.length, 7);
 });
+
+test("runDemoBackfill keeps deterministic smooth temperature progression with centesimal precision", async () => {
+    const { stubs, state } = buildDemoStubs();
+    const demoDataService = loadDemoDataService(stubs);
+
+    await demoDataService.runDemoBackfill({
+        start: "2026-05-10T00:00:00.000Z",
+        end: "2026-05-10T06:00:00.000Z",
+        now: new Date("2026-05-11T16:24:00.000Z"),
+    });
+
+    const series = state.readingInserts
+        .filter((entry) => entry.hiveKey === "app-01")
+        .map((entry) => entry.temperature);
+
+    assert.ok(series.length > 10);
+
+    let hasCentesimalValue = false;
+    let longestRun = 1;
+    let currentRun = 1;
+
+    for (let index = 0; index < series.length; index += 1) {
+        const value = series[index];
+        const hundredths = Math.round(value * 100);
+
+        if (Math.abs(value * 100 - hundredths) <= 1e-9 && hundredths % 10 !== 0) {
+            hasCentesimalValue = true;
+        }
+
+        if (index === 0) continue;
+
+        if (Object.is(series[index - 1], value)) {
+            currentRun += 1;
+            longestRun = Math.max(longestRun, currentRun);
+        } else {
+            currentRun = 1;
+        }
+    }
+
+    assert.equal(hasCentesimalValue, true);
+    assert.ok(longestRun <= 3);
+});

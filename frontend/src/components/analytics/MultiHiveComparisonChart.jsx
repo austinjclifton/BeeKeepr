@@ -80,10 +80,10 @@ export default function MultiHiveComparisonChart({
 
   const bucketTimes = Array.from(new Set(
     [
-      ...hives.flatMap(hive => (hive.series ?? []).map(point => point.bucketAt).filter(Boolean)),
-      ...externalSeries.map(point => point?.bucketAt).filter(Boolean),
+      ...hives.flatMap(hive => (hive.series ?? []).map(point => parseBucketTime(point?.bucketAt)).filter(value => value != null)),
+      ...externalSeries.map(point => parseBucketTime(point?.bucketAt)).filter(value => value != null),
     ],
-  )).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+  )).sort((a, b) => a - b);
 
   const timestamps = bucketTimes.map(value => new Date(value));
   const domainStart = parseTimelineDate(comparison?.startAt);
@@ -92,7 +92,10 @@ export default function MultiHiveComparisonChart({
   const showMarks = bucketTimes.length <= 36 && (hives.length + (hasExternalSeries ? 1 : 0)) <= 4;
   const allValues = [];
   const series = hives.map((hive, index) => {
-    const byBucket = new Map((hive.series ?? []).map(point => [point.bucketAt, point.averageTemperature ?? point.temperature]));
+    const byBucket = toBucketValueMap(
+      hive.series,
+      point => point.averageTemperature ?? point.temperature,
+    );
     const data = bucketTimes.map(bucket => nullableNumber(byBucket.get(bucket)));
     allValues.push(...data);
     return {
@@ -112,8 +115,9 @@ export default function MultiHiveComparisonChart({
   });
 
   if (hasExternalSeries) {
-    const byBucket = new Map(
-      externalSeries.map(point => [point.bucketAt, point.temperature ?? point.externalTemperature]),
+    const byBucket = toBucketValueMap(
+      externalSeries,
+      point => point.temperature ?? point.externalTemperature,
     );
     const data = bucketTimes.map(bucket => nullableNumber(byBucket.get(bucket)));
     allValues.push(...data);
@@ -231,6 +235,30 @@ function SortedAxisTooltipContent() {
 function nullableNumber(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function parseBucketTime(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  const time = date.getTime();
+  return Number.isFinite(time) ? time : null;
+}
+
+function toBucketValueMap(series, getValue) {
+  const byBucket = new Map();
+
+  for (const point of series ?? []) {
+    const bucketAt = parseBucketTime(point?.bucketAt);
+    if (bucketAt == null) continue;
+
+    const value = getValue(point);
+    // Keep the latest non-null value for duplicate bucket timestamps
+    if (!byBucket.has(bucketAt) || nullableNumber(value) != null) {
+      byBucket.set(bucketAt, value);
+    }
+  }
+
+  return byBucket;
 }
 
 function sortTooltipSeriesItems(seriesItems) {
