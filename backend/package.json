@@ -10,6 +10,8 @@
     "db:seed:demo": "node src/scripts/dbSeedDemo.js",
     "demo:tick": "node src/scripts/demoTick.js",
     "demo:backfill": "node src/scripts/demoBackfill.js",
+    "demo:prune-stale": "node src/scripts/demoPruneStale.js",
+    "demo:reset-readings": "node src/scripts/demoResetRuntimeData.js",
     "test": "node --test"
   },
   "dependencies": {

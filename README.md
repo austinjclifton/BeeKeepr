@@ -107,7 +107,21 @@ cd backend
 npm run demo:tick
 ```
 
-The demo topology contains seven hives across three regions: two in Appalachia, two in western New York, and three in California. `demo:tick` uses each location's configured timezone when generating location-aware external conditions and internal hive readings while deduping by the existing uniqueness rules.
+To remove stale demo hives and orphaned demo locations that are no longer in the config:
+
+```sh
+cd backend
+npm run demo:prune-stale
+```
+
+To clear demo runtime readings, alerts, and demo-simulator weather without deleting the current demo hives or devices:
+
+```sh
+cd backend
+npm run demo:reset-readings
+```
+
+The demo topology contains five hives across two regions: two in western New York and three in California. Demo seed, tick, and backfill reconciliation now treat `backend/src/config/demoData.config.js` as the source of truth and prune configured-out demo topology before generating new telemetry. `demo:tick` uses each location's configured timezone when generating location-aware external conditions and internal hive readings while deduping by the existing uniqueness rules.
 
 ## API Docs
 

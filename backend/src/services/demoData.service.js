@@ -3,6 +3,7 @@
 const bcrypt = require("bcrypt");
 
 const demoConfig = require("../config/demoData.config.js");
+const demoDataRepo = require("../db/demoData.db.js");
 const usersRepo = require("../db/users.db.js");
 const ingestRepo = require("../db/ingest.db.js");
 const externalConditionsRepo = require("../db/externalConditions.db.js");
@@ -23,6 +24,8 @@ const BCRYPT_ROUNDS = 12;
 const DEFAULT_BATCH_SIZE = 2500;
 
 exports.ensureDemoSeed = async function ensureDemoSeed() {
+  await exports.pruneStaleDemoData();
+
   const beekeeper = await ensureDemoBeekeeper();
   const beekeeperId = toEntityId(beekeeper.id, "beekeeperId");
   const locations = await ensureDemoLocations();
@@ -107,6 +110,93 @@ exports.ensureDemoSeed = async function ensureDemoSeed() {
       locationKey: item.location.key,
       name: item.name,
     })),
+  };
+};
+
+exports.pruneStaleDemoData = async function pruneStaleDemoData({
+  removeUnusedLocations = true,
+} = {}) {
+  const beekeeper = await findExistingDemoBeekeeper();
+  const configuredHives = getConfiguredDemoHives();
+  const configuredLocations = getConfiguredDemoLocations();
+
+  if (!beekeeper) {
+    return {
+      beekeeper: null,
+      configuredHives,
+      configuredLocations,
+      removeUnusedLocations,
+      staleHives: [],
+      deletedLocations: [],
+      prunableLocations: [],
+      deleted: createDeleteSummary(),
+    };
+  }
+
+  const beekeeperId = toEntityId(beekeeper.id, "beekeeperId");
+  const result = await demoDataRepo.pruneStaleDemoData({
+    beekeeperId,
+    configuredHiveNames: configuredHives.map((hive) => hive.name),
+    configuredLocations,
+    provider: demoConfig.provider,
+    removeUnusedLocations,
+  });
+
+  return {
+    beekeeper: {
+      id: beekeeperId,
+      username: beekeeper.username,
+    },
+    configuredHives,
+    configuredLocations: configuredLocations.map((location) => ({
+      key: location.key,
+      name: location.name,
+      cityName: location.cityName,
+    })),
+    removeUnusedLocations,
+    ...result,
+  };
+};
+
+exports.resetDemoRuntimeData = async function resetDemoRuntimeData() {
+  const beekeeper = await findExistingDemoBeekeeper();
+  const configuredHives = getConfiguredDemoHives();
+  const configuredLocations = getConfiguredDemoLocations();
+
+  if (!beekeeper) {
+    return {
+      beekeeper: null,
+      configuredHives,
+      configuredLocations: configuredLocations.map((location) => ({
+        key: location.key,
+        name: location.name,
+        cityName: location.cityName,
+      })),
+      resetLocations: [],
+      sharedLocationsSkipped: [],
+      deleted: createDeleteSummary(),
+    };
+  }
+
+  const beekeeperId = toEntityId(beekeeper.id, "beekeeperId");
+  const result = await demoDataRepo.resetDemoRuntimeData({
+    beekeeperId,
+    configuredLocations,
+    provider: demoConfig.provider,
+  });
+
+  return {
+    beekeeper: {
+      id: beekeeperId,
+      username: beekeeper.username,
+    },
+    configuredHives,
+    configuredLocations: configuredLocations.map((location) => ({
+      key: location.key,
+      name: location.name,
+      cityName: location.cityName,
+    })),
+    ...result,
   };
 };
 
@@ -410,6 +500,10 @@ async function touchDemoDevices({ topology, seenAt }) {
   }
 }
 
+async function findExistingDemoBeekeeper() {
+  return usersRepo.findByUsername({ username: getDemoUsername() });
+}
+
 async function ensureDemoBeekeeper() {
   const username = getDemoUsername();
   let user = await usersRepo.findByUsername({ username });
@@ -640,6 +734,35 @@ function countBuckets({ startAt, endAt, intervalMinutes }) {
 
 function bucketKey(id, bucketAt) {
   return `${Number(id)}|${toDate(bucketAt, "bucketAt").toISOString()}`;
+}
+
+function getConfiguredDemoHives() {
+  return demoConfig.hives.map((hive) => ({
+    key: hive.key,
+    name: hive.name,
+    locationKey: hive.locationKey,
+  }));
+}
+
+function getConfiguredDemoLocations() {
+  return demoConfig.locations.map((location) => ({
+    key: location.key,
+    name: location.name,
+    cityName: location.cityName,
+    lat: location.lat,
+    lon: location.lon,
+  }));
+}
+
+function createDeleteSummary() {
+  return {
+    alerts: 0,
+    readings: 0,
+    devices: 0,
+    hives: 0,
+    externalConditions: 0,
+    locations: 0,
+  };
 }
 
 function minValue(current, value) {
