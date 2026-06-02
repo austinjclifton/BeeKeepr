@@ -48,10 +48,10 @@ function buildExternalCondition(location, bucketAtDate) {
 
   const temperature = roundToOne(
     climate.averageTempF +
-      climate.seasonalAmplitudeF * seasonalWave +
-      dailyAmplitude * dailyWave +
-      climate.synopticNoiseF * synopticNoise +
-      climate.shortNoiseF * shortNoise,
+    climate.seasonalAmplitudeF * seasonalWave +
+    dailyAmplitude * dailyWave +
+    climate.synopticNoiseF * synopticNoise +
+    climate.shortNoiseF * shortNoise,
   );
   const cloudPct = roundToOne(
     clamp(42 - 17 * dailyWave + 18 * stormNoise + 10 * (1 - warmth), 4, 98),
@@ -59,9 +59,9 @@ function buildExternalCondition(location, bucketAtDate) {
   const humidityPct = roundToOne(
     clamp(
       climate.humidityBasePct -
-        climate.humidityAmplitudePct * dailyWave +
-        0.22 * cloudPct +
-        6 * (1 - warmth),
+      climate.humidityAmplitudePct * dailyWave +
+      0.22 * cloudPct +
+      6 * (1 - warmth),
       24,
       98,
     ),
@@ -69,8 +69,8 @@ function buildExternalCondition(location, bucketAtDate) {
   const windMps = roundToOne(
     clamp(
       climate.windBaseMps +
-        climate.windAmplitudeMps * ((1 - dailyWave) / 2) +
-        0.6 * smoothNoise(`${location.key}:wind`, bucketAtDate, 36 * 60 * MINUTE_MS),
+      climate.windAmplitudeMps * ((1 - dailyWave) / 2) +
+      0.6 * smoothNoise(`${location.key}:wind`, bucketAtDate, 36 * 60 * MINUTE_MS),
       0.3,
       13,
     ),
@@ -84,8 +84,8 @@ function buildExternalCondition(location, bucketAtDate) {
   const pressureHpa = roundToOne(
     clamp(
       climate.pressureBaseHpa -
-        4.5 * stormNoise +
-        1.4 * smoothNoise(`${location.key}:pressure`, bucketAtDate, 7 * DAY_MS),
+      4.5 * stormNoise +
+      1.4 * smoothNoise(`${location.key}:pressure`, bucketAtDate, 7 * DAY_MS),
       960,
       1045,
     ),
@@ -126,16 +126,16 @@ function buildReadingInput({ hive, location, bucketAtDate, externalCondition }) 
     internal.broodDailyAmplitudeF * dailyWave +
     internal.broodSeasonalAmplitudeF * broodSeasonWave +
     internal.activeExternalSensitivity *
-      (externalCondition.temperature - climate.averageTempF);
+    (externalCondition.temperature - climate.averageTempF);
   const coldPressure = Math.min(
     0,
     externalCondition.temperature - climate.coldStressTempF,
   );
   const winterNoise =
     smoothNoise(`${hive.key}:winter-6h`, bucketAtDate, 6 * 60 * MINUTE_MS) *
-      (0.5 + (1 - internal.strength) * 1.2) +
+    (0.5 + (1 - internal.strength) * 1.2) +
     smoothNoise(`${hive.key}:winter-2d`, bucketAtDate, 2 * DAY_MS) *
-      (0.6 + (1 - internal.strength) * 1.5);
+    (0.6 + (1 - internal.strength) * 1.5);
   const winterTarget =
     internal.winterClusterTempF +
     internal.sensorPlacementOffsetF +
@@ -144,8 +144,21 @@ function buildReadingInput({ hive, location, bucketAtDate, externalCondition }) 
     winterNoise;
   const activeNoise =
     smoothNoise(`${hive.key}:active-8h`, bucketAtDate, 8 * 60 * MINUTE_MS) *
-      (0.08 + (1 - internal.strength) * 0.18);
+    (0.08 + (1 - internal.strength) * 0.18);
   let temperature = lerp(winterTarget, broodTarget + activeNoise, broodActivity);
+
+  // Add a tiny deterministic high-frequency component so 10-minute buckets
+  // do not quantize into long flat runs after rounding.
+  const continuityPhase = hashUnit(`${hive.key}:continuity-phase`);
+  const continuityWave = Math.sin(
+    Math.PI * 2 * (bucketAtDate.getTime() / (130 * MINUTE_MS) + continuityPhase),
+  );
+  const microPhase = hashUnit(`${hive.key}:micro-phase`);
+  const microWave = Math.sin(
+    Math.PI * 2 * (bucketAtDate.getTime() / (47 * MINUTE_MS) + microPhase),
+  );
+  temperature += continuityWave * (0.03 + (1 - internal.strength) * 0.02);
+  temperature += microWave * (0.018 + (1 - internal.strength) * 0.013);
 
   const signalWave = Math.sin(
     (Math.PI * 2 * (localHour + internal.phaseShiftHours)) / 24,
@@ -154,7 +167,7 @@ function buildReadingInput({ hive, location, bucketAtDate, externalCondition }) 
     hive.rssi.baselineDbm -
     ((signalWave + 1) / 2) * hive.rssi.dailyAmplitudeDb +
     hive.rssi.noiseDb *
-      smoothNoise(`${hive.key}:rssi`, bucketAtDate, 12 * 60 * MINUTE_MS);
+    smoothNoise(`${hive.key}:rssi`, bucketAtDate, 12 * 60 * MINUTE_MS);
 
   const activeScenarios = getActiveScenarioOverlays({
     hive,
@@ -198,7 +211,7 @@ function buildReadingInput({ hive, location, bucketAtDate, externalCondition }) 
   }
 
   return {
-    temperature: roundToOne(clamp(temperature, -40, 140)),
+    temperature: roundToTwo(clamp(temperature, -40, 140)),
     rssi: Math.round(clamp(rssi, -125, -35)),
     scenarios: activeScenarios.map((scenario) => ({
       type: scenario.type,
@@ -358,6 +371,10 @@ function smoothstep(value) {
 
 function roundToOne(value) {
   return Math.round(value * 10) / 10;
+}
+
+function roundToTwo(value) {
+  return Math.round(value * 100) / 100;
 }
 
 module.exports = {
