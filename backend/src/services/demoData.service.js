@@ -58,9 +58,9 @@ exports.ensureDemoSeed = async function ensureDemoSeed() {
 
     const hive = existingHive
       ? await hivesService.updateHive({
-          hiveId: toEntityId(existingHive.id, "hiveId"),
-          ...hivePayload,
-        })
+        hiveId: toEntityId(existingHive.id, "hiveId"),
+        ...hivePayload,
+      })
       : await hivesService.createHive(hivePayload);
 
     if (!hive) {
@@ -614,9 +614,9 @@ function resolveBackfillWindow({
   const startAt = start
     ? floorToInterval(toDate(start, "start"), normalizedIntervalMinutes)
     : floorToInterval(
-        subtractUtcMonths(endAt, monthsValue),
-        normalizedIntervalMinutes,
-      );
+      subtractUtcMonths(endAt, monthsValue),
+      normalizedIntervalMinutes,
+    );
 
   if (startAt > endAt) {
     throw new Error("Backfill start must be before or equal to end");
@@ -629,10 +629,10 @@ function resolveBackfillWindow({
     intervalMinutes: normalizedIntervalMinutes,
     futureBucketsSkipped: requestedEndAt > nowBucket
       ? countBuckets({
-          startAt: new Date(nowBucket.getTime() + toIntervalMs(normalizedIntervalMinutes)),
-          endAt: requestedEndAt,
-          intervalMinutes: normalizedIntervalMinutes,
-        })
+        startAt: new Date(nowBucket.getTime() + toIntervalMs(normalizedIntervalMinutes)),
+        endAt: requestedEndAt,
+        intervalMinutes: normalizedIntervalMinutes,
+      })
       : 0,
   };
 }
