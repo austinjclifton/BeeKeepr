@@ -368,7 +368,7 @@ export default function Dashboard() {
               >
                 <div className="analytics-card chart-card">
                   <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '12px' }}>
-                    Internal temperature for active hives over the previous 24 hours using 10-minute readings.
+                    Internal temperature trends for active hives over the previous 24 hours, summarized from 10-minute readings.
                   </div>
                   {compareIds.length < 2 ? (
                     <EmptyState
@@ -384,6 +384,7 @@ export default function Dashboard() {
                         range={DASHBOARD_RANGE}
                         loading={fleetTimeline.loading}
                         showBucketRangeInTooltip={false}
+                        smoothFleetDisplay
                       />
                     </Suspense>
                   )}

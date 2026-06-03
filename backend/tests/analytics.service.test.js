@@ -596,6 +596,24 @@ test("getDashboardHiveTemperature24h maps selected hive internal and outside poi
       name: "North Hive",
       location_id: 9,
       location_name: "North Yard",
+      bucket_at: "2026-05-10T12:10:00.000Z",
+      reading_id: 12,
+      internal_temperature: 94.5,
+      rssi: -65,
+      received_at: "2026-05-10T12:10:03.000Z",
+      external_condition_id: 21,
+      outside_temperature: 65.9,
+      humidity_pct: 55,
+      wind_mps: 2.1,
+      pressure_hpa: 1016,
+      cloud_pct: 20,
+      external_status: "success",
+    },
+    {
+      hive_id: 5,
+      name: "North Hive",
+      location_id: 9,
+      location_name: "North Yard",
       bucket_at: "2026-05-10T12:00:00.000Z",
       reading_id: 11,
       internal_temperature: 94.2,
@@ -620,6 +638,7 @@ test("getDashboardHiveTemperature24h maps selected hive internal and outside poi
   assert.equal(result.hive.hiveId, 5);
   assert.equal(result.bucketSize, "10m");
   assert.equal(result.points[0].internalTemperature, 94.2);
+  assert.equal(result.points[0].bucketAt, "2026-05-10T12:00:00.000Z");
   assert.equal(result.points[0].outsideTemperature, 65.4);
 });
 
@@ -631,6 +650,7 @@ test("getDashboardFleetTemperature24h returns one 10-minute series per hive", as
     { id: 2, name: "South Hive", location_id: locationId },
   ];
   repo.getDashboardFleetTemperature24h = async () => [
+    { hive_id: 1, bucket_at: "2026-05-10T12:20:00.000Z", temperature: 95 },
     { hive_id: 1, bucket_at: "2026-05-10T12:00:00.000Z", temperature: 94 },
     { hive_id: 2, bucket_at: "2026-05-10T12:00:00.000Z", temperature: 96 },
   ];
@@ -648,6 +668,10 @@ test("getDashboardFleetTemperature24h returns one 10-minute series per hive", as
   assert.equal(result.bucketSize, "10m");
   assert.equal(result.hives.length, 2);
   assert.equal(result.hives[0].series[0].averageTemperature, 94);
+  assert.deepEqual(
+    result.hives[0].series.map((point) => point.bucketAt),
+    ["2026-05-10T12:00:00.000Z", "2026-05-10T12:20:00.000Z"],
+  );
 });
 
 test("compareHives enforces selected location ownership", async () => {

@@ -301,7 +301,8 @@ exports.getDashboardHiveTemperature24h = async ({ beekeeperId, hiveId }) => {
     bucketLabel: "10-minute",
     points: rows
       .filter((row) => row.bucket_at)
-      .map(mapDashboardHivePoint),
+      .map(mapDashboardHivePoint)
+      .sort(compareBucketAt),
   };
 };
 
@@ -354,6 +355,10 @@ exports.getDashboardFleetTemperature24h = async ({ beekeeperId, locationId }) =>
       temperature: asNumber(row.temperature),
       averageTemperature: asNumber(row.temperature),
     });
+  }
+
+  for (const hive of byHive.values()) {
+    hive.series.sort(compareBucketAt);
   }
 
   return {
@@ -600,6 +605,16 @@ function mapDashboardHivePoint(row) {
     cloudPct: asNumber(row.cloud_pct),
     externalStatus: row.external_status ?? null,
   };
+}
+
+function compareBucketAt(left, right) {
+  const leftTime = toTime(left?.bucketAt);
+  const rightTime = toTime(right?.bucketAt);
+
+  if (leftTime == null && rightTime == null) return 0;
+  if (leftTime == null) return 1;
+  if (rightTime == null) return -1;
+  return leftTime - rightTime;
 }
 
 function computeHealthStatus({
@@ -1035,6 +1050,13 @@ function toIso(value) {
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString();
+}
+
+function toTime(value) {
+  if (!value) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  const time = d.getTime();
+  return Number.isFinite(time) ? time : null;
 }
 
 function httpError(status, code, message) {

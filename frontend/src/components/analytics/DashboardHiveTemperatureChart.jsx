@@ -6,6 +6,7 @@ import {
   formatChartTooltipTime,
   paddedTemperatureDomain,
 } from '../../utils/analyticsFormat';
+import { sortPointsByBucketAt } from '../../utils/chartSeries';
 
 const chartSx = {
   '& .MuiChartsAxis-line, & .MuiChartsAxis-tick': { stroke: 'rgba(255,255,255,0.18)' },
@@ -28,7 +29,7 @@ export default function DashboardHiveTemperatureChart({
 }) {
   if (loading) return <LoadingState label="Loading selected hive telemetry…" />;
 
-  const points = (timeline?.points ?? []).filter(point => point?.bucketAt);
+  const points = sortPointsByBucketAt(timeline?.points ?? []);
   const hasInternal = points.some(point => Number.isFinite(Number(point.internalTemperature)));
   const hasExternal = points.some(point => Number.isFinite(Number(point.outsideTemperature)));
 
