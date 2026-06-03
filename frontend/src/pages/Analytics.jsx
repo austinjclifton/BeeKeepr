@@ -616,6 +616,7 @@ export default function Analytics() {
                           loading={comparison.loading}
                           height={400}
                           showBucketRangeInTooltip={false}
+                          smoothComparisonDisplay
                         />
                       )}
                     </div>

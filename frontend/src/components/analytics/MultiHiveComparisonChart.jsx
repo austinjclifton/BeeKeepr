@@ -19,6 +19,7 @@ import {
   formatChartTooltipTime,
   paddedTemperatureDomain,
 } from '../../utils/analyticsFormat';
+import { parseChartTime, smoothSeries, sortPointsByBucketAt } from '../../utils/chartSeries';
 
 const COLORS = ['#F5B942', '#22C55E', '#60A5FA', '#FB7185', '#A78BFA', '#2DD4BF', '#F97316', '#E879F9', '#84CC16', '#F43F5E'];
 
@@ -42,11 +43,16 @@ export default function MultiHiveComparisonChart({
   loading = false,
   height = 340,
   showBucketRangeInTooltip = true,
+  smoothFleetDisplay = false,
+  smoothComparisonDisplay = false,
 }) {
   if (loading) return <LoadingState label="Loading comparison…" />;
 
-  const hives = comparison?.hives ?? [];
-  const externalSeries = comparison?.externalSeries ?? [];
+  const hives = (comparison?.hives ?? []).map(hive => ({
+    ...hive,
+    series: sortPointsByBucketAt(hive?.series ?? []),
+  }));
+  const externalSeries = sortPointsByBucketAt(comparison?.externalSeries ?? []);
   const isLocationComparison = comparison?.locationId != null;
   const hasExternalSeries = externalSeries.some(point =>
     nullableNumber(point?.temperature ?? point?.externalTemperature) != null,
@@ -79,10 +85,25 @@ export default function MultiHiveComparisonChart({
     );
   }
 
+  const useDashboardFleetSmoothing =
+    smoothFleetDisplay &&
+    comparison?.mode === 'dashboard' &&
+    comparison?.bucketSize === '10m';
+  const useComparisonSmoothing =
+    smoothComparisonDisplay &&
+    !useDashboardFleetSmoothing &&
+    comparison?.mode !== 'dashboard';
+  const useDisplaySmoothing = useDashboardFleetSmoothing || useComparisonSmoothing;
+  const displayBucketSize = comparison?.bucketSize;
+  const displayReferenceLabel = useDisplaySmoothing
+    ? `${formatAggregationInterval(displayBucketSize)} avg`
+    : null;
+  const smoothingOptions = getSmoothingOptions(displayBucketSize);
+
   const bucketTimes = Array.from(new Set(
     [
-      ...hives.flatMap(hive => (hive.series ?? []).map(point => parseBucketTime(point?.bucketAt, comparison?.bucketSize)).filter(value => value != null)),
-      ...externalSeries.map(point => parseBucketTime(point?.bucketAt, comparison?.bucketSize)).filter(value => value != null),
+      ...hives.flatMap(hive => (hive.series ?? []).map(point => parseBucketTime(point?.bucketAt, displayBucketSize)).filter(value => value != null)),
+      ...externalSeries.map(point => parseBucketTime(point?.bucketAt, displayBucketSize)).filter(value => value != null),
     ],
   )).sort((a, b) => a - b);
 
@@ -96,10 +117,13 @@ export default function MultiHiveComparisonChart({
     const byBucket = toBucketValueMap(
       hive.series,
       point => point.averageTemperature ?? point.temperature,
-      comparison?.bucketSize,
+      displayBucketSize,
     );
-    const data = bucketTimes.map(bucket => nullableNumber(byBucket.get(bucket)));
-    allValues.push(...data);
+    const rawData = bucketTimes.map(bucket => nullableNumber(byBucket.get(bucket)));
+    const data = useDisplaySmoothing
+      ? smoothSeries(rawData, smoothingOptions)
+      : rawData;
+    allValues.push(...data, ...rawData);
     return {
       data,
       label: hive.name || `Hive ${hive.hiveId}`,
@@ -110,8 +134,10 @@ export default function MultiHiveComparisonChart({
         value,
         context,
         bucketTimes,
-        comparison?.bucketSize,
+        displayBucketSize,
         showBucketRangeInTooltip,
+        useDisplaySmoothing ? rawData : null,
+        displayReferenceLabel,
       ),
     };
   });
@@ -120,12 +146,15 @@ export default function MultiHiveComparisonChart({
     const byBucket = toBucketValueMap(
       externalSeries,
       point => point.temperature ?? point.externalTemperature,
-      comparison?.bucketSize,
+      displayBucketSize,
     );
     const data = bucketTimes.map(bucket => nullableNumber(byBucket.get(bucket)));
-    allValues.push(...data);
+    const displayData = useComparisonSmoothing
+      ? smoothSeries(data, smoothingOptions)
+      : data;
+    allValues.push(...displayData, ...data);
     series.push({
-      data,
+      data: displayData,
       label: 'External °F',
       color: EXTERNAL_TEMPERATURE_COLOR,
       showMark: showMarks,
@@ -134,8 +163,10 @@ export default function MultiHiveComparisonChart({
         value,
         context,
         bucketTimes,
-        comparison?.bucketSize,
+        displayBucketSize,
         showBucketRangeInTooltip,
+        useComparisonSmoothing ? data : null,
+        displayReferenceLabel,
       ),
     });
   }
@@ -181,6 +212,8 @@ export default function MultiHiveComparisonChart({
       />
       <div className="chart-meta">
         Source readings are stored in 10-minute ingest buckets.
+        {useDashboardFleetSmoothing ? ' Fleet overview lines use 10-minute display buckets with a 9-point trend average; bucket averages remain available in tooltips when they differ.' : ''}
+        {useComparisonSmoothing ? ' Multi-hive comparison lines are display-smoothed for the selected interval; bucket averages remain available in tooltips when they differ.' : ''}
         {comparison?.locationId ? ' External temperature for the selected location is overlaid when weather data is available.' : ''}
         {comparison?.locationId && !hasExternalSeries ? ' Outside conditions are unavailable for this location.' : ''}
       </div>
@@ -244,11 +277,12 @@ function nullableNumber(value) {
 }
 
 function parseBucketTime(value, bucketSize) {
-  if (!value) return null;
-  const date = value instanceof Date ? value : new Date(value);
+  const parsedTime = parseChartTime(value);
+  if (parsedTime == null) return null;
+  const date = new Date(parsedTime);
   const normalized = normalizeBucketDate(date, bucketSize);
-  const time = normalized?.getTime();
-  return Number.isFinite(time) ? time : null;
+  const bucketTime = normalized?.getTime();
+  return Number.isFinite(bucketTime) ? bucketTime : null;
 }
 
 function toBucketValueMap(series, getValue, bucketSize) {
@@ -270,10 +304,12 @@ function toBucketValueMap(series, getValue, bucketSize) {
     }
   }
 
-  return new Map(Array.from(aggregates.entries(), ([bucketAt, aggregate]) => [
-    bucketAt,
-    aggregate.sum / aggregate.count,
-  ]));
+  return new Map(Array.from(aggregates.entries())
+    .sort(([left], [right]) => left - right)
+    .map(([bucketAt, aggregate]) => [
+      bucketAt,
+      aggregate.sum / aggregate.count,
+    ]));
 }
 
 function comparisonTemperatureDomain(values, comparison) {
@@ -284,6 +320,22 @@ function comparisonTemperatureDomain(values, comparison) {
   }
 
   return expandDomainToMinSpan(baseDomain, 12);
+}
+
+function getSmoothingOptions(bucketSize) {
+  if (bucketSize === '10m') {
+    return { windowSize: 9, preserveSpikeThreshold: 2 };
+  }
+
+  if (bucketSize === '30m') {
+    return { windowSize: 5, preserveSpikeThreshold: 2 };
+  }
+
+  if (bucketSize === 'hour') {
+    return { windowSize: 3, preserveSpikeThreshold: 2 };
+  }
+
+  return { windowSize: 3, preserveSpikeThreshold: 2.5 };
 }
 
 function expandDomainToMinSpan(domain, minSpan) {
@@ -359,13 +411,30 @@ function formatFahrenheit(value) {
   return Number.isFinite(n) ? `${n.toFixed(1)}°F` : 'No data';
 }
 
-function formatFahrenheitWithBucket(value, context, bucketTimes, bucketSize, showBucketRangeInTooltip) {
-  const base = formatFahrenheit(value);
+function formatFahrenheitWithBucket(
+  value,
+  context,
+  bucketTimes,
+  bucketSize,
+  showBucketRangeInTooltip,
+  rawData,
+  rawLabel,
+) {
+  const rawValue = rawData?.[context?.dataIndex];
+  const base = formatFahrenheitWithRaw(value, rawValue, rawLabel);
   if (!showBucketRangeInTooltip) return base;
   const bucketAt = bucketTimes?.[context?.dataIndex];
   if (!bucketAt) return base;
   const endAt = addBucketEnd(bucketAt, bucketSize);
   return `${base} · ${formatBucketRange(bucketAt, endAt, bucketSize)}`;
+}
+
+function formatFahrenheitWithRaw(value, rawValue, rawLabel = 'raw') {
+  const base = formatFahrenheit(value);
+  const display = sortableTemperature(value);
+  const raw = sortableTemperature(rawValue);
+  if (display == null || raw == null || Math.abs(display - raw) < 0.05) return base;
+  return `${base} trend · ${rawLabel} ${formatFahrenheit(raw)}`;
 }
 
 function addBucketEnd(bucketAt, bucketSize) {
