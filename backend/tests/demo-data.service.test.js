@@ -272,7 +272,7 @@ test("ensureDemoSeed creates the expected demo topology", async () => {
     assert.equal(state.createdDevices.length, 5);
     assert.deepEqual(
         result.hives.map((hive) => hive.locationKey),
-        ["wny", "wny", "ca", "ca", "ca"],
+        ["app", "app", "wny", "wny", "wny"],
     );
 });
 
@@ -316,14 +316,14 @@ test("ensureDemoSeed prunes stale demo hives before rebuilding the configured to
 
     assert.equal(state.pruneCalls.length, 1);
     assert.deepEqual(state.pruneCalls[0].configuredHiveNames, [
+        "Blue Ridge Stable Hive",
+        "Pisgah Orchard Hive",
         "Lake Erie Stable Hive",
         "Niagara Snowbelt Hive",
-        "Yolo Stable Hive",
-        "Delta Orchard Hive",
-        "Solano Variable Hive",
+        "Finger Lakes Variable Hive",
     ]);
     assert.equal(result.hives.length, 5);
-    assert.equal(result.hives.some((hive) => hive.name === "Blue Ridge Stable Hive"), false);
+    assert.equal(result.hives.some((hive) => hive.name === "Yolo Stable Hive"), false);
 });
 
 test("runDemoTick upserts the configured demo locations and inserts one current 10-minute bucket", async () => {
@@ -344,7 +344,7 @@ test("runDemoTick upserts the configured demo locations and inserts one current 
     assert.equal(state.alerts.length, 0);
 
     const locationKeys = state.externalUpserts.map((entry) => entry.locationKey).sort();
-    assert.deepEqual(locationKeys, ["ca", "wny"]);
+    assert.deepEqual(locationKeys, ["app", "wny"]);
     assert.ok(state.readingInserts.every((entry) => entry.temperature >= 92));
     assert.ok(state.readingInserts.every((entry) => entry.temperature <= 98));
 });
@@ -448,16 +448,16 @@ test("pruneStaleDemoData passes the five-hive config into the scoped prune opera
     assert.deepEqual(
         state.pruneCalls[0].configuredHiveNames,
         [
+            "Blue Ridge Stable Hive",
+            "Pisgah Orchard Hive",
             "Lake Erie Stable Hive",
             "Niagara Snowbelt Hive",
-            "Yolo Stable Hive",
-            "Delta Orchard Hive",
-            "Solano Variable Hive",
+            "Finger Lakes Variable Hive",
         ],
     );
     assert.deepEqual(
         state.pruneCalls[0].configuredLocations.map((location) => location.key),
-        ["wny", "ca"],
+        ["app", "wny"],
     );
     assert.equal(result.beekeeper.username, "demo");
     assert.equal(result.deleted.hives, 2);
@@ -482,8 +482,8 @@ test("resetDemoRuntimeData passes the configured demo yards into the runtime res
                 locations: 0,
             },
             resetLocations: [
-                { locationId: 1, name: "Western New York Demo Yard" },
-                { locationId: 2, name: "California Central Valley Demo Yard" },
+                { locationId: 1, name: "Blue Ridge Appalachia Demo Yard" },
+                { locationId: 2, name: "Western New York Demo Yard" },
             ],
             sharedLocationsSkipped: [],
         };
@@ -498,7 +498,7 @@ test("resetDemoRuntimeData passes the configured demo yards into the runtime res
     assert.equal(state.resetCalls[0].provider, "demo-simulator");
     assert.deepEqual(
         state.resetCalls[0].configuredLocations.map((location) => location.key),
-        ["wny", "ca"],
+        ["app", "wny"],
     );
     assert.equal(result.deleted.readings, 5);
     assert.equal(result.deleted.externalConditions, 4);

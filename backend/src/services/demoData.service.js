@@ -2,7 +2,7 @@
 
 const bcrypt = require("bcrypt");
 
-const demoConfig = require("../config/demoData.config.js");
+const demoConfig = require("../scripts/demoData.config.js");
 const demoDataRepo = require("../db/demoData.db.js");
 const usersRepo = require("../db/users.db.js");
 const ingestRepo = require("../db/ingest.db.js");
@@ -22,6 +22,8 @@ const { classifyTemperature } = require("../utils/alertClassification.js");
 
 const BCRYPT_ROUNDS = 12;
 const DEFAULT_BATCH_SIZE = 2500;
+
+validateDemoConfig(demoConfig);
 
 exports.ensureDemoSeed = async function ensureDemoSeed() {
   await exports.pruneStaleDemoData();
@@ -830,4 +832,64 @@ function toEntityId(value, name) {
 
 function isUniqueViolation(err) {
   return Boolean(err && err.code === "23505");
+}
+
+/**
+ * Defensive validation of the demo config. Runs once at module load
+ * so that misconfigurations in `demoData.config.js` fail fast with a
+ * clear message instead of producing confusing runtime errors deep
+ * inside the seed / backfill path.
+ *
+ * Checks:
+ *   - `locations` and `hives` are non-empty arrays.
+ *   - Every `location.key` is a unique non-empty string.
+ *   - Every `hive.key` is a unique non-empty string.
+ *   - Every `hive.locationKey` resolves to a configured location.
+ */
+function validateDemoConfig(config) {
+  if (!config || typeof config !== "object") {
+    throw new Error("demoData.config.js must export a configuration object");
+  }
+
+  const locations = Array.isArray(config.locations) ? config.locations : [];
+  const hives = Array.isArray(config.hives) ? config.hives : [];
+
+  if (locations.length === 0) {
+    throw new Error("demoData.config.js must define at least one demo location");
+  }
+
+  if (hives.length === 0) {
+    throw new Error("demoData.config.js must define at least one demo hive");
+  }
+
+  const locationKeys = new Set();
+  for (const location of locations) {
+    const key = location && location.key;
+    if (typeof key !== "string" || key.trim() === "") {
+      throw new Error("Every demo location must have a non-empty string `key`");
+    }
+    if (locationKeys.has(key)) {
+      throw new Error(`Duplicate demo location key: ${key}`);
+    }
+    locationKeys.add(key);
+  }
+
+  const hiveKeys = new Set();
+  for (const hive of hives) {
+    const key = hive && hive.key;
+    if (typeof key !== "string" || key.trim() === "") {
+      throw new Error("Every demo hive must have a non-empty string `key`");
+    }
+    if (hiveKeys.has(key)) {
+      throw new Error(`Duplicate demo hive key: ${key}`);
+    }
+    hiveKeys.add(key);
+
+    const locationKey = hive.locationKey;
+    if (typeof locationKey !== "string" || !locationKeys.has(locationKey)) {
+      throw new Error(
+        `Demo hive ${key} references unknown locationKey ${JSON.stringify(locationKey)}`,
+      );
+    }
+  }
 }

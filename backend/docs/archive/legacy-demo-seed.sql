@@ -1,3 +1,23 @@
+-- ============================================================
+-- !! LEGACY / MANUAL DEMO SEED — DO NOT USE BY DEFAULT !!
+-- ============================================================
+-- The active BeeKeepr demo data system uses
+--   backend/src/config/demoData.config.js
+-- together with
+--   backend/src/services/demoData.service.js
+-- and the npm scripts in backend/package.json (db:seed:demo,
+-- demo:backfill, demo:tick, demo:prune-stale, demo:reset-readings).
+--
+-- This file is preserved for historical reference and for operators
+-- who intentionally need to bypass the Node demo simulator (e.g. to
+-- restore an older California/Rochester-shaped demo world). It is not
+-- referenced by any npm script or runtime code path.
+--
+-- To load a demo world, use the Node pipeline. To intentionally run
+-- this legacy seed, apply it manually with psql after running
+-- `npm run db:migrate`.
+-- ============================================================
+
 BEGIN;
 
 -- ============================================================

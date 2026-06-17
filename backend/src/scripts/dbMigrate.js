@@ -1,5 +1,24 @@
 "use strict";
 
+/**
+ * Schema bootstrap (`npm run db:migrate`).
+ *
+ * Applies `backend/docs/schema.sql` to an empty BeeKeepr database so
+ * the rest of the demo and runtime code paths have the tables they
+ * expect. This is intentionally NOT a migration tool:
+ *
+ *   - If NONE of the required tables exist, it applies schema.sql.
+ *   - If ALL of the required tables already exist, it exits cleanly.
+ *   - If only SOME of the required tables exist (a partial schema),
+ *     it refuses to run and asks for a manual migration. Run this
+ *     only on a fresh database or one that has been manually
+ *     reconciled.
+ *
+ * Use this once when provisioning a new local or test database. For
+ * ongoing schema changes, write an explicit migration in
+ * `backend/docs/` and apply it directly.
+ */
+
 require("dotenv").config();
 
 const fs = require("fs/promises");

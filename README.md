@@ -121,7 +121,9 @@ cd backend
 npm run demo:reset-readings
 ```
 
-The demo topology contains five hives across two regions: two in western New York and three in California. Demo seed, tick, and backfill reconciliation now treat `backend/src/config/demoData.config.js` as the source of truth and prune configured-out demo topology before generating new telemetry. `demo:tick` uses each location's configured timezone when generating location-aware external conditions and internal hive readings while deduping by the existing uniqueness rules.
+The demo topology contains five hives across two regions: two in the Blue Ridge Appalachia yard (Asheville, NC) and three in the Western New York yard (Buffalo, NY). Demo seed, tick, and backfill reconciliation now treat `backend/src/scripts/demoData.config.js` as the source of truth and prune configured-out demo topology before generating new telemetry. `demo:tick` uses each location's configured timezone when generating location-aware external conditions and internal hive readings while deduping by the existing uniqueness rules. See [backend/docs/demo-data.md](backend/docs/demo-data.md) for the full demo pipeline.
+
+The recurring 10-minute tick is run by **cron** (not PM2) and is `flock`-guarded so a slow tick cannot overlap with the next one. PM2 manages the backend API only. To install the cron line on a fresh host, run `bash scripts/install-demo-tick-cron.sh` from the repo root. See [backend/docs/demo-data.md](backend/docs/demo-data.md#scheduling-the-10-minute-tick-cron-not-pm2) for the canonical cron entry and the PM2 ↔ cron split.
 
 ## API Docs
 
