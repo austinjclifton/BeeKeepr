@@ -1,5 +1,4 @@
 import { getHiveId } from '../../utils/analyticsFormat';
-import StatusBadge from './StatusBadge';
 
 /**
  * Hive dropdown used in the page header. The label + select are wrapped
@@ -44,41 +43,5 @@ export default function HiveSelector({
         })}
       </select>
     </label>
-  );
-}
-
-/**
- * Pill-style hive picker. Use this when the dashboard wants the hive
- * list to live in the page body (e.g. inside a filter row) instead of
- * inside a native dropdown.
- *
- * Currently unused on the dashboard — kept exported for future use.
- */
-export function HiveQuickList({ hives, selectedHiveId, onChange }) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {hives.map(hive => {
-        const id = getHiveId(hive);
-        const active = String(id) === String(selectedHiveId);
-        return (
-          <button
-            key={id}
-            type="button"
-            aria-pressed={active}
-            onClick={() => onChange(id)}
-            className={
-              'inline-flex items-center gap-2 rounded-pill border px-2.5 py-1.5 text-xs font-extrabold transition ' +
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg ' +
-              (active
-                ? 'border-amber bg-amber/15 text-amber'
-                : 'border-line bg-white/[0.04] text-ink-secondary hover:border-amber/45 hover:text-white')
-            }
-          >
-            {hive.name || `Hive ${id}`}
-            <StatusBadge status={hive.healthStatus} />
-          </button>
-        );
-      })}
-    </div>
   );
 }

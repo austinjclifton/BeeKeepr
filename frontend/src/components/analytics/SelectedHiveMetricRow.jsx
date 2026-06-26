@@ -1,4 +1,6 @@
 import {
+  EXTERNAL_TEMPERATURE_DOT_CLASS,
+  EXTERNAL_TEMPERATURE_TEXT_CLASS,
   formatCount,
   formatPercent,
   formatPrecipMm,
@@ -9,66 +11,20 @@ import {
 } from '../../utils/analyticsFormat';
 import { TONES } from './tones';
 
-// ============================================================================
-// Text hierarchy system
-// ============================================================================
-//
-// Every value in the selected-hive strip is assigned to one of four
-// tiers, and every tier has a fixed color + size. This is what keeps
-// the strip from feeling like a random mix of white and gray text.
-//
-//   Tier A — GROUP LABEL
-//     - 11px uppercase muted gray (text-ink-muted)
-//     - Examples: "LATEST", "24H INTERNAL", "OUTSIDE", "WEATHER",
-//       "TELEMETRY"
-//
-//   Tier B — PRIMARY VALUE
-//     - Large, bright, accent-colored where the data is "the" answer
-//       for that group.
-//     - Internal / current (Latest): amber-light
-//     - External (Outside primary temp): cyan
-//     - 24h Internal sub-cell values, Telemetry "Total readings":
-//       white (treated as supporting "the" set of values for the
-//       group, not a single headline number).
-//
-//   Tier C — SECONDARY / SUPPORTING VALUE
-//     - Important supporting data that the user must read at a glance
-//       (delta, humidity, wind, gust, clouds, pressure, rain, signal,
-//       packet id, last received, yard name).
-//     - WHITE (text-white) for the value portion
-//     - The accompanying inline label word (e.g. "Humidity", "Wind",
-//       "Signal", "Packet") stays muted gray so the value pops.
-//     - Single-sentence supporting lines (yard name, "Last received
-//       2m ago") use text-ink-secondary so they read as supporting
-//       copy without feeling disabled.
-//
-//   Tier D — MICRO / META
-//     - Reserved for true metadata ("No packets yet" fallback, "No
-//       external reading" fallback, the "·" separator between paired
-//       values).
-//     - 12px text-ink-muted or text-ink-muted/60 for the separator.
-// ============================================================================
+// Text hierarchy classes used across the strip. Labels are 11px uppercase
+// muted gray; primary values are amber (internal) or cyan (external);
+// supporting values are white; meta fallbacks (e.g. "No external
+// reading") are muted gray.
 
-// Tier A — group label.
 const LABEL_CLASS =
   'text-[11px] font-extrabold uppercase leading-[1.2] tracking-[0.05em] text-ink-muted';
 
-// Tier C — single-sentence supporting copy (yard name, "Last received
-// 2m ago" when treated as a single supporting line).
 const SUPPORTING_TEXT_CLASS =
   'text-[12.5px] leading-[1.2] text-ink-secondary';
 
-// Tier D — meta fallback ("No packets yet", "No external reading").
 const META_TEXT_CLASS =
   'text-[12px] leading-[1.2] text-ink-muted';
 
-// Cyan accent color for the outside/external primary value. Kept
-// inline so the Tailwind JIT scanner picks it up.
-const CYAN_CLASS = 'text-[#22D3EE]';
-
-// Amber accent for internal/latest primary values (via TONES.default).
-
-// Dot-separator color: muted but still visible at small sizes.
 const DOT_CLASS = 'text-ink-muted/70';
 
 // CSS-grid border management for the 5 grouped sections.
@@ -296,7 +252,7 @@ export default function SelectedHiveMetricRow({
           <div className={`inline-flex items-center gap-1.5 ${LABEL_CLASS}`}>
             <span
               aria-hidden="true"
-              className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#22D3EE]"
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${EXTERNAL_TEMPERATURE_DOT_CLASS}`}
             />
             <span>Outside</span>
           </div>
@@ -309,7 +265,7 @@ export default function SelectedHiveMetricRow({
             <div className="flex items-baseline gap-2 flex-wrap">
               {/* Tier B primary — cyan, large */}
               <span
-                className={`text-[20px] font-extrabold leading-[1.05] tracking-[-0.01em] tabular-nums ${CYAN_CLASS}`}
+                className={`text-[20px] font-extrabold leading-[1.05] tracking-[-0.01em] tabular-nums ${EXTERNAL_TEMPERATURE_TEXT_CLASS}`}
               >
                 {formatTemperature(externalTemp)}
               </span>
@@ -350,7 +306,7 @@ export default function SelectedHiveMetricRow({
           <div className={`inline-flex items-center gap-1.5 ${LABEL_CLASS}`}>
             <span
               aria-hidden="true"
-              className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#22D3EE]"
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${EXTERNAL_TEMPERATURE_DOT_CLASS}`}
             />
             <span>Weather</span>
           </div>

@@ -5,7 +5,10 @@ import {
   getFleetHiveDisplay,
   sortFleetHives,
 } from '../../utils/chartStyles';
-import { getHiveId } from '../../utils/analyticsFormat';
+import {
+  EXTERNAL_TEMPERATURE_DOT_CLASS,
+  getHiveId,
+} from '../../utils/analyticsFormat';
 
 const MultiHiveComparisonChart = lazy(() => import('./MultiHiveComparisonChart'));
 
@@ -14,24 +17,14 @@ const MultiHiveComparisonChart = lazy(() => import('./MultiHiveComparisonChart')
  * chart when the user has 2+ hives with data, an empty state when they
  * don't, and an error state if the request fails.
  *
- * Dashboard layout (Jun 2026 readability pass):
- *   - Custom header row replaces the default DashboardSection chrome.
- *     The eyebrow / title / description sit on the left and the hive
- *     color legend sits on the right. The legend wraps to a second
- *     row on smaller viewports so the chart title is never squeezed.
- *   - The chart's long engineering footer is suppressed via
- *     `showFooter={false}` — bucket/smoothing detail belongs on
- *     the Analytics page, not the dashboard.
- *   - The MUI built-in chart legend is hidden via `hideLegend` because
- *     the custom header legend above is now the source of truth.
- *   - The "Open Analytics" deep-link pill was removed earlier; the
- *     Analytics nav link in the sidebar is the discoverable entry point.
- *   - Series order + legend/tooltip labels are grouped by yard: hives
- *     from the same location appear adjacent in the chart and read as
- *     "ShortLocation · HiveName" in both the legend pills and the
- *     chart tooltip. The location context flows in via the
- *     `hiveLocations` map supplied by the Dashboard page (the fleet
- *     API itself doesn't return `locationName` per hive).
+ * The header row is bespoke (not DashboardSection) so the hive color
+ * legend can sit to the right of the title and wrap on narrow viewports.
+ * The chart's MUI built-in legend is hidden — the FleetLegend below is
+ * the source of truth.
+ *
+ * Series + legend/tooltip labels are grouped by yard via the
+ * `hiveLocations` map supplied by the Dashboard page (the fleet API
+ * itself doesn't return `locationName` per hive).
  */
 export default function FleetComparisonSection({
   fleetTimeline,
@@ -65,19 +58,18 @@ export default function FleetComparisonSection({
 
   return (
     // No top margin on the outer <section> — the dashboard's Fleet
-    // Overview wrapper (see Dashboard.jsx) supplies the `mt-10` and
-    // `space-y-*` so the Fleet Trend / Fleet Status pair reads as
-    // one grouped area. If this section is ever rendered outside
-    // that wrapper, the parent should supply its own spacing.
+    // Overview wrapper (see Dashboard.jsx) supplies `mt-10` so the
+    // Fleet Trend / Fleet Status pair reads as one grouped area.
+    // Chart wrapper is `min-h-[340px]` to match the chart's intrinsic
+    // height; StateBlock has its own `min-h-[220px]` so empty / loading
+    // / error states stay visually consistent.
     //
-    // The chart wrapper is `min-h-[300px]` — exactly the chart's
-    // intrinsic height (300px) — so the loaded chart fills the
-    // wrapper with no dead space below. The StateBlock inside still
-    // has its own `min-h-[220px]`, so empty / loading / error
-    // states stay visually consistent.
-<section className={className}>
-      <div className="mb-3.5 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-        <div className="min-w-0 flex-1">
+    // Header is a 2-column grid at lg+: title (260–340px) on the left,
+    // legend right-aligned on the right. Below lg the columns stack
+    // so the title gets full width and the legend wraps underneath.
+    <section className={className}>
+      <div className="mb-3.5 grid gap-x-6 gap-y-3 lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)] lg:items-start">
+        <div className="min-w-0">
           <div className="mb-1 text-[11px] font-extrabold uppercase tracking-[0.08em] text-ink-muted">
             Fleet Trend
           </div>
@@ -89,10 +81,12 @@ export default function FleetComparisonSection({
           </p>
         </div>
         {showChart && legendHives.length > 0 && (
-          <FleetLegend hives={legendHives} hasExternal={Boolean(comparison?.locationId)} />
+          <div className="min-w-0 lg:flex lg:justify-end">
+            <FleetLegend hives={legendHives} hasExternal={Boolean(comparison?.locationId)} />
+          </div>
         )}
       </div>
-      <div className="flex min-h-[300px] flex-col">
+      <div className="flex min-h-[340px] flex-col">
         {!hasMultipleHives ? (
           <EmptyState
             title="Comparison unavailable"
@@ -109,6 +103,14 @@ export default function FleetComparisonSection({
               showFooter={false}
               smoothFleetDisplay
               hideLegend
+              // Dashboard opts into "Location · Hive" series labels so
+              // the chart tooltip matches the legend pills.
+              labelMode="locationName"
+              // Dashboard opts out of the chart axis labels (the header
+              // subtitle already explains time range + units) and the
+              // label-driven bottom margin, reclaiming vertical plot
+              // space. Analytics keeps the labeled default.
+              compact
               // Match the Fleet Status table's precision rules:
               // internal series always show 2 decimals, the external
               // overlay always shows 1 decimal.
@@ -124,14 +126,11 @@ export default function FleetComparisonSection({
 
 /**
  * Compact horizontal legend of hive colors that mirrors the palette
- * used by the chart. Lives in the chart card header so the user sees
- * "which line is which hive" right next to the title, not floating
- * at the top of the chart area.
- *
- * Wraps to a new row when there are many hives (or on narrow
- * viewports). Each pill is a 12px-wide color swatch + hive name.
- * The external-temperature pill is appended at the end when a
- * location comparison is on screen.
+ * used by the chart. Each pill is a swatch + the hive name (bold) with
+ * the short location name as a muted second line. Wraps freely so long
+ * location-prefixed labels in the chart tooltip don't squeeze the
+ * section title. The full "Location · Hive" string stays on the hover
+ * tooltip.
  */
 function FleetLegend({ hives, hasExternal }) {
   const items = hives
@@ -140,7 +139,7 @@ function FleetLegend({ hives, hasExternal }) {
 
   return (
     <div
-      className="flex max-w-full flex-wrap items-center gap-x-3.5 gap-y-3 text-[12px] uppercase tracking-[0.06em] text-ink-secondary"
+      className="flex flex-wrap items-center gap-x-3.5 gap-y-3 text-[12px] uppercase tracking-[0.06em] text-ink-secondary"
       aria-label="Fleet hive color legend"
     >
       {items.map(({ hive, index }) => {
@@ -150,35 +149,39 @@ function FleetLegend({ hives, hasExternal }) {
         return (
           <span
             key={id}
-            className="inline-flex items-center gap-1.5"
+            className="inline-flex min-w-0 max-w-[14rem] flex-col leading-tight"
             title={hoverLabel}
           >
-            <span
-              aria-hidden="true"
-              className="h-1.5 w-3.5 shrink-0 self-center rounded-full"
-              style={{ backgroundColor: getFleetHiveColor(index) }}
-            />
-            <span className="flex min-w-0 flex-col leading-tight">
-              <span className="truncate font-extrabold text-ink-secondary">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="h-1.5 w-3.5 shrink-0 rounded-full"
+                style={{ backgroundColor: getFleetHiveColor(index) }}
+              />
+              <span className="truncate font-extrabold text-white">
                 {name}
               </span>
-              {locationName && (
-                <span className="truncate text-[10px] tracking-[0.06em] text-ink-muted">
-                  {locationName}
-                </span>
-              )}
             </span>
+            {locationName && (
+              <span className="ml-5 truncate text-[10px] tracking-[0.06em] text-ink-muted">
+                {locationName}
+              </span>
+            )}
           </span>
         );
       })}
       {hasExternal && (
-        <span className="inline-flex items-center gap-1.5">
-          <span
-            aria-hidden="true"
-            className="h-1.5 w-3.5 shrink-0 rounded-full"
-            style={{ backgroundColor: '#22D3EE' }}
-          />
-          External
+        <span className="inline-flex min-w-0 max-w-[14rem] flex-col leading-tight">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              className={`h-1.5 w-3.5 shrink-0 rounded-full ${EXTERNAL_TEMPERATURE_DOT_CLASS}`}
+            />
+            <span className="truncate font-extrabold text-white">External</span>
+          </span>
+          <span className="ml-5 truncate text-[10px] tracking-[0.06em] text-ink-muted">
+            outside °F
+          </span>
         </span>
       )}
     </div>

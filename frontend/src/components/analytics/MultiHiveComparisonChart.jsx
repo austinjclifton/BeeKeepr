@@ -11,9 +11,23 @@ import {
 import {
   comparisonChartSx,
   getFleetHiveColor,
+  getFleetHiveDisplay,
   sortFleetHives,
 } from '../../utils/chartStyles';
 import { nullableNumber, parseChartTime, smoothSeries, sortPointsByBucketAt } from '../../utils/chartSeries';
+
+// Format a hive series label. When `labelMode === 'locationName'` and the
+// hive has a location, the label is prefixed with the short location name:
+//   "Blue Ridge · Biltmore Estate Hive"
+// Without a location, the hive name is used as-is. Default 'name' returns
+// the bare hive name (matches Analytics behavior).
+function formatHiveLabel(hive, labelMode) {
+  const display = getFleetHiveDisplay(hive);
+  if (labelMode === 'locationName' && display.locationName) {
+    return `${display.locationName} · ${display.name}`;
+  }
+  return display.name || (hive?.hiveId != null ? `Hive ${hive.hiveId}` : '');
+}
 
 export default function MultiHiveComparisonChart({
   comparison,
@@ -22,7 +36,10 @@ export default function MultiHiveComparisonChart({
   // Dashboard fleet overview wants a compact chart so the bottom half
   // doesn't dwarf the selected-hive area above. The Analytics page
   // overrides this with `height={400}` — see Analytics.jsx.
-  height = 300,
+  // Bumped from 300 → 340 (Jun 2026 readability pass) so the x-axis
+  // "Bucket Start Time" title has room to sit below the tick labels
+  // without MUI hiding the ticks to make space for the title.
+  height = 340,
   showFooter = true,
   smoothFleetDisplay = false,
   smoothComparisonDisplay = false,
@@ -41,6 +58,17 @@ export default function MultiHiveComparisonChart({
   // behavior.
   internalPrecision = 'auto',
   externalPrecision = 'auto',
+  // Series label format. 'name' returns just the hive name (default,
+  // matches Analytics). 'locationName' prefixes the short location when
+  // available, e.g. "Blue Ridge · Biltmore Estate Hive". The dashboard's
+  // FleetComparisonSection opts in.
+  labelMode = 'name',
+  // Dashboard opts into a tighter chart: omit the axis labels (the
+  // Fleet Trend header subtitle already explains the time range and y
+  // units) and shrink the label-driven bottom/left margin to reclaim
+  // vertical plot space. Default false keeps the labeled chart used by
+  // Analytics unchanged.
+  compact = false,
 }) {
   if (loading) return <LoadingState label="Loading comparison…" />;
 
@@ -129,7 +157,7 @@ export default function MultiHiveComparisonChart({
     allValues.push(...data, ...rawData);
     return {
       data,
-      label: (hive?.name || '').trim() || `Hive ${hive.hiveId}`,
+      label: formatHiveLabel(hive, labelMode),
       color: getFleetHiveColor(index),
       showMark: showMarks,
       curve: 'monotoneX',
@@ -164,32 +192,34 @@ export default function MultiHiveComparisonChart({
       <LineChart
         height={height}
         skipAnimation
-        // `bottom: 36` matches the selected-hive chart's x-axis label
-        // margin. 58px (the old value) left a generous band of empty
-        // space below the labels inside the chart canvas; 36px is
-        // enough for 12px tick labels + a small descender buffer.
-        margin={{ left: 52, right: 20, top: 24, bottom: 36 }}
+        // Default margin reserves space for the x-axis "Bucket Start
+        // Time" label; the compact mode drops the label and trims both
+        // the bottom and left margins to reclaim plot area for the
+        // dashboard's Fleet Trend card.
+        margin={compact
+          ? { left: 48, right: 20, top: 24, bottom: 36 }
+          : { left: 56, right: 20, top: 24, bottom: 64 }}
         xAxis={[{
           data: timestamps,
           scaleType: 'time',
           min: domainStart ?? undefined,
           max: domainEnd ?? undefined,
-          label: 'Bucket start time',
+          ...(compact ? {} : { label: 'Bucket Start Time' }),
           valueFormatter: (value, context) =>
             context.location === 'tick'
               ? formatChartTime(value, range)
               : formatChartTooltipTime(value),
           tickLabelInterval: (_, index) => index % tickEvery === 0,
           tickLabelStyle: { fill: 'rgba(255,255,255,0.62)', fontSize: 12 },
-          labelStyle: { fill: 'rgba(255,255,255,0.55)', fontSize: 12 },
+          ...(compact ? {} : { labelStyle: { fill: 'rgba(255,255,255,0.65)', fontSize: 13 } }),
         }]}
         yAxis={[{
-          label: 'Avg temperature (°F)',
+          ...(compact ? {} : { label: 'Temperature (°F)' }),
           min: yMin,
           max: yMax,
           valueFormatter: value => `${value}°F`,
           tickLabelStyle: { fill: 'rgba(255,255,255,0.62)', fontSize: 12 },
-          labelStyle: { fill: 'rgba(255,255,255,0.55)', fontSize: 12 },
+          ...(compact ? {} : { labelStyle: { fill: 'rgba(255,255,255,0.65)', fontSize: 13 } }),
         }]}
         series={series}
         grid={{ horizontal: true, vertical: true }}
@@ -299,20 +329,6 @@ function getSmoothingOptions(bucketSize) {
   }
 
   return { windowSize: 3, preserveSpikeThreshold: 2.5 };
-}
-
-function expandDomainToMinSpan(domain, minSpan) {
-  const [min, max] = domain;
-  if (!Number.isFinite(min) || !Number.isFinite(max)) return domain;
-
-  const span = max - min;
-  if (span >= minSpan) return domain;
-
-  const pad = (minSpan - span) / 2;
-  return [
-    Math.floor((min - pad) * 10) / 10,
-    Math.ceil((max + pad) * 10) / 10,
-  ];
 }
 
 function normalizeBucketDate(date, bucketSize) {

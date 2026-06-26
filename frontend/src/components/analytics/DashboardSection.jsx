@@ -3,24 +3,11 @@
  * pages. Eyebrow is the small uppercase tag above the title; action is
  * an optional right-aligned control (button, link, badge).
  *
- * Header content is `items-center` so the action baseline aligns with
- * the title, not the bottom of the title block.
- *
- * Top-spacing behavior
- * --------------------
- * Default top spacing is `mt-8` (32px) so every `DashboardSection` on
- * the page gets a consistent vertical break between sections, sitting
- * in the dashboard's "around 28–36px" major-section target.
- *
- * Pass `className` to override the default. **Important:** in Tailwind's
- * generated CSS, `mt-6` is emitted *after* `mt-0`–`mt-5` in source
- * order, so if we just appended the override the default would silently
- * win (same specificity, later rule). We therefore make `className`
- * *replace* the default entirely — if you pass `className="mt-0"` you
- * get no top margin, if you pass `className="mt-3"` you get 12px, and
- * so on. This is also why the wrapper around the dashboard's bottom
- * half (Fleet Trend + Fleet Status) uses `space-y-*` for its inner
- * gap instead of asking each child to override its `mt-6`.
+ * Default top spacing is `mt-8` (32px). `className` *replaces* the
+ * default entirely — pass `className="mt-0"` to sit flush against the
+ * previous section, `className="mt-10"` to override the rhythm, etc.
+ * The replacement semantics are intentional (vs. appending) so an
+ * override isn't silently defeated by Tailwind's CSS source order.
  */
 export default function DashboardSection({
   title,
@@ -29,9 +16,6 @@ export default function DashboardSection({
   children,
   className,
 }) {
-  // `className` fully replaces the default `mt-6` when provided, so
-  // callers can pin a section to any vertical position without the
-  // default silently winning via CSS source order.
   const sectionClass = className ?? 'mt-8';
   return (
     <section className={sectionClass}>

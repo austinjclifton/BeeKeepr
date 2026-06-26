@@ -4,7 +4,19 @@ export function getHiveId(hive) {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+// Telemetry is considered "stale" once the latest reading is older than this.
+// Used by the dashboard's freshness banner and the picker row's offline tone.
+export const STALE_THRESHOLD_MS = 60 * 60 * 1000;
+
+export const INTERNAL_TEMPERATURE_COLOR = '#F5B942';
 export const EXTERNAL_TEMPERATURE_COLOR = '#22D3EE';
+
+// Literal Tailwind class strings for the external/outside temperature
+// accent. Kept as full literals (not template-interpolated) so the
+// Tailwind JIT scanner picks them up at build time. Use these in JSX
+// className attributes instead of inline styles where possible.
+export const EXTERNAL_TEMPERATURE_TEXT_CLASS = 'text-[#22D3EE]';
+export const EXTERNAL_TEMPERATURE_DOT_CLASS = 'bg-[#22D3EE]';
 
 export function formatTemperature(value, precision = 1) {
   const n = Number(value);
@@ -27,19 +39,6 @@ export function formatTemperature(value, precision = 1) {
  */
 export function formatInternalTemperature(value) {
   return formatTemperature(value, 2);
-}
-
-/**
- * Cell-formatter for **external / outside** temperature. Always renders
- * exactly one decimal place, matching the convention used by the weather
- * strip and external-readout cards elsewhere in the app.
- *
- *   71.23  → "71.2°F"
- *   80     → "80.0°F"
- *   null   → "—"
- */
-export function formatExternalTemperature(value) {
-  return formatTemperature(value, 1);
 }
 
 /**

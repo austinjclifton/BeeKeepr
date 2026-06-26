@@ -1,13 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   formatRelativeTime,
   formatTemperature,
   getHiveId,
+  STALE_THRESHOLD_MS,
 } from '../../utils/analyticsFormat';
 import { TONES } from './tones';
 import styles from './HivePicker.module.css';
-
-const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
 
 // CSS fallback used on the very first paint (before the ResizeObserver
 // has measured the right column) and on environments where DOM
@@ -115,27 +114,9 @@ export default function HivePicker({
   globalStale = false,
 }) {
   const listRef = useRef(null);
-  const asideRef = useRef(null);
   const [maxHeightPx, setMaxHeightPx] = useState(null);
 
-  const freshness = useMemo(() => {
-    if (!hives?.length) return null;
-    const offlineCount = hives.filter(
-      hive => String(hive.healthStatus || '').toLowerCase() === 'offline',
-    ).length;
-    const allOffline = offlineCount === hives.length;
-    const lastSeenMs = hives.reduce((acc, hive) => {
-      if (!hive?.latestReadingAt) return acc;
-      const t = new Date(hive.latestReadingAt).getTime();
-      return Number.isFinite(t) && (acc == null || t > acc) ? t : acc;
-    }, null);
-    const lastSeenIso =
-      lastSeenMs == null ? null : new Date(lastSeenMs).toISOString();
-    const stale =
-      lastSeenMs != null &&
-      Date.now() - lastSeenMs > STALE_THRESHOLD_MS;
-    return { allOffline, lastSeenIso, stale, total: hives.length };
-  }, [hives]);
+  const totalHives = hives?.length ?? 0;
 
   // Mirror the right-side selected panel's height so the picker card
   // ends at the same y as the chart card. Only meaningful when the
@@ -179,7 +160,6 @@ export default function HivePicker({
 
   return (
     <aside
-      ref={asideRef}
       // CSS fallback (used on first paint / no-JS) + JS-driven inline
       // override once the right column has been measured. The fallback
       // is min(640px, 100vh - 280px) — large enough to show ~9 rows on
@@ -204,8 +184,7 @@ export default function HivePicker({
             Hives
           </h2>
           <div className="mt-0.5 text-[12px] tabular-nums text-ink-secondary">
-            {freshness?.total ?? 0}{' '}
-            {freshness?.total === 1 ? 'hive' : 'hives'}
+            {totalHives} {totalHives === 1 ? 'hive' : 'hives'}
           </div>
         </div>
       </header>

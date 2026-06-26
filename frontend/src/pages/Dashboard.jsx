@@ -18,15 +18,14 @@ import { useDashboardMetrics } from '../hooks/useDashboardMetrics';
 import { useHiveAnalytics } from '../hooks/useHiveAnalytics';
 import { useHiveStatus } from '../hooks/useHiveStatus';
 import { useSelectedHive } from '../hooks/useSelectedHive';
-import { formatRelativeTime, getHiveId } from '../utils/analyticsFormat';
+import {
+  formatRelativeTime,
+  getHiveId,
+  STALE_THRESHOLD_MS,
+} from '../utils/analyticsFormat';
 
 // Fixed dashboard range (preset analytics range used by all dashboard queries).
 const DASHBOARD_RANGE = '1d';
-
-// Above this age the dashboard treats the data as stale even if some
-// hives still report "online" status — applies to any account whose
-// newest reading is older than the threshold.
-const GLOBAL_STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
 
 export default function Dashboard() {
   const { ready: authReady, error: authError } = useAuth();
@@ -77,32 +76,17 @@ export default function Dashboard() {
     }, null);
     if (lastSeenMs == null) return null;
     const ageMs = Date.now() - lastSeenMs;
-    return ageMs > GLOBAL_STALE_THRESHOLD_MS
+    return ageMs > STALE_THRESHOLD_MS
       ? { lastSeenIso: new Date(lastSeenMs).toISOString() }
       : null;
   }, [hives]);
 
-  // Hive list ordering for the picker + metrics table. Group by
-  // location first (alphabetical), then by hive name within each
-  // location. Hive id breaks ties for a fully stable order. The
-  // summary strip and selected-hive lookups don't depend on this
-  // order, so the raw `hives` array continues to feed them.
-  //
-  // No displayOrder column exists on the location table, so the
-  // chosen order is alphabetical by location name. For the demo
-  // fleet this yields:
-  //   Blue Ridge Appalachia Demo Yard
-  //     Blue Ridge Stable Hive
-  //     Pisgah Orchard Hive
-  //   Western New York Demo Yard
-  //     Finger Lakes Variable Hive
-  //     Lake Erie Stable Hive
-  //     Niagara Snowbelt Hive
-  // which matches the preferred final grouped order.
+  // Hive list ordering for the picker + metrics table. Sorted by
+  // locationName, then name, then hiveId for a stable order. Null/empty
+  // locationNames sort to the end. The summary strip and selected-hive
+  // lookups use the raw `hives` array (order-independent).
   const sortedHives = useMemo(() => {
     if (!Array.isArray(hives) || hives.length === 0) return hives;
-    // Sentinel for null/empty location names — sorts them to the
-    // end of the list so hives with a real location come first.
     const NO_LOCATION = '\uFFFF';
     return [...hives].sort((a, b) => {
       const aLoc = (a?.locationName || '').trim() || NO_LOCATION;
@@ -191,10 +175,8 @@ export default function Dashboard() {
             />
           ) : (
             <>
-              {/* Stale / freshness banner — sits above the summary strip
-                  so the user reads the freshness context BEFORE the
-                  numbers, not after. Only shown when the latest reading
-                  across the fleet is older than the stale threshold. */}
+              {/* Freshness banner — sits above the summary strip so the
+                  user reads the freshness context before the numbers. */}
               {globalStale && (
                 <div
                   className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-amber/25 bg-amber/[0.06] px-3.5 py-2 text-[12.5px] text-amber-light"
@@ -231,15 +213,9 @@ export default function Dashboard() {
                 </div>
               </DashboardSection>
 
-              {/*
-                Fleet Overview area — the bottom half of the dashboard.
-                Fleet Trend uses `mt-10` to match the page's 40px
-                section rhythm; Fleet Status uses `mt-0` to sit flush
-                against the bottom of the fleet graph (the tighter
-                gap there keeps the table visually anchored to its
-                chart, since the chart already provides the breathing
-                room).
-              */}
+              {/* Fleet Trend + Fleet Status share a 40px section rhythm
+                  (mt-10) on the trend chart, with mt-0 on the table so it
+                  sits flush against the bottom of the fleet graph. */}
               <FleetComparisonSection
                 fleetTimeline={fleetTimeline}
                 hasMultipleHives={hives.length >= 2}
@@ -250,10 +226,6 @@ export default function Dashboard() {
               <DashboardSection
                 title="Fleet Status"
                 eyebrow="All Hives"
-                // No top margin — Fleet Status sits flush against the
-                // bottom of the fleet graph. DashboardSection's default
-                // `mt-10` is replaced entirely by this className (see
-                // DashboardSection.jsx for the override semantics).
                 className="mt-0"
               >
                 <HiveMetricsTable hives={sortedHives} />

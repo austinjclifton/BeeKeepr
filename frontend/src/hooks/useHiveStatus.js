@@ -66,16 +66,10 @@ export function useHiveStatus(query, { enabled = true } = {}) {
   }, [enabled, queryKey, currentRange]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-load on mount + whenever the query / enabled state changes.
+  // `load()` handles its own state + errors; no cancellation needed here
+  // because each `load()` call replaces the prior in-flight state.
   useEffect(() => {
-    let cancelled = false;
-    load().then(() => {
-      // load() handles its own state, but the cancelled flag is still useful
-      // for callers that flip `enabled` quickly.
-      void cancelled;
-    });
-    return () => {
-      cancelled = true;
-    };
+    load();
   }, [load]);
 
   return {

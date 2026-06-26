@@ -6,39 +6,12 @@ import {
 import StatusBadge from './StatusBadge';
 
 /**
- * "Fleet Status" panel — wide-table view of every hive, plus a
- * mobile-friendly card list so the data stays readable on phones
- * (no horizontal scroll).
+ * "Fleet Status" panel — wide-table view of every hive on desktop, with
+ * a stacked card list on phones so the data stays readable without
+ * horizontal scroll.
  *
- * Two layouts are rendered in the DOM and toggled via Tailwind
- * responsive utilities:
- *   - <md : stacked card list, one card per hive. Each card surfaces
- *          the headline numbers + health badge so a quick phone
- *          glance still tells the whole story.
- *   - md+ : classic wide table, with slightly tighter padding than
- *           the previous version so it sits better next to the
- *           fleet chart above.
- *
- * Jun 2026 readability pass:
- *   - Added a one-line product-tone subtitle above the table so the
- *     "Fleet Status" card has the same context-line pattern as the
- *     fleet chart card next to it.
- *   - Bumped column header font from 10px → 11px (still uppercase /
- *     tracked, so the hierarchy is unchanged — they just read at a
- *     more comfortable size against the dashboard chrome).
- *   - Hive cell now stacks hive name (white, bold) over location
- *     name (muted, 12px, truncated) so the yard/yard-group context
- *     is visible at a glance without growing the row very much.
- *     Padding is tightened from `py-2.5` → `py-2` and the
- *     name/location gap is `mt-0.5` to keep the row visually
- *     compact even with the second line.
- *   - Internal temperature columns (Latest, Average, Min, Max,
- *     Temperature Swing) now always render 2 decimals via
- *     `formatInternalTemperature`; if external columns are ever
- *     added they should use `formatExternalTemperature` (1 decimal).
- *
- * No new data, no new fields — the same per-hive payload drives
- * every value on both layouts.
+ * Both layouts read from the same per-hive payload. Internal temperature
+ * columns always render 2 decimals via `formatInternalTemperature`.
  */
 
 const NUMERIC_COLUMNS = new Set([

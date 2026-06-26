@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { ErrorState, LoadingState } from './StateBlocks';
+import { EXTERNAL_TEMPERATURE_DOT_CLASS } from '../../utils/analyticsFormat';
 import SelectedHiveMetricRow from './SelectedHiveMetricRow';
 
 const DashboardHiveTemperatureChart = lazy(
@@ -116,8 +117,7 @@ export default function SelectedHiveSection({
             <span className="inline-flex items-center gap-1.5">
               <span
                 aria-hidden="true"
-                className="h-1.5 w-3 rounded-full"
-                style={{ backgroundColor: '#22D3EE' }}
+                className={`h-1.5 w-3 rounded-full ${EXTERNAL_TEMPERATURE_DOT_CLASS}`}
               />
               Outside
             </span>

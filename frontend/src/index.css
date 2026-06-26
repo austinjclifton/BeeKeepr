@@ -12,14 +12,6 @@
    - base resets the Tailwind preflight doesn't cover
    ────────────────────────────────────────────────────────── */
 
-/* ──────────────────────────────────────────────────────────
-   Bespoke visuals that don't fit Tailwind utilities:
-   - app-shell warm-corner radial background
-   - custom range slider thumb
-   - custom scrollbar
-   - base resets the Tailwind preflight doesn't cover
-   ────────────────────────────────────────────────────────── */
-
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
@@ -85,12 +77,7 @@
   }
 }
 
-/* Operations summary strip — at xl the column template is set inline via
-   the `--ops-cols` custom property (one `Nfr` per metric, computed from
-   per-metric `width` props). Below xl the strip falls back to a uniform
-   grid via Tailwind (2 cols on mobile, 4 on sm-md). */
-@media (min-width: 1280px) {
-  [data-ops-strip] {
-    grid-template-columns: var(--ops-cols) !important;
-  }
-}
+/* Operations summary strip — at xl the per-metric column template is
+     now applied inline by the component itself (see
+     OperationsSummaryStrip.jsx). Below xl the strip falls back to a
+     uniform grid via Tailwind (2 cols on mobile, 4 on sm-md). */

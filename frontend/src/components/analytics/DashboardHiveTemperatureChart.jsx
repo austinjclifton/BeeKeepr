@@ -5,6 +5,7 @@ import {
   formatChartTemperature,
   formatChartTime,
   formatChartTooltipTime,
+  INTERNAL_TEMPERATURE_COLOR,
   paddedTemperatureDomain,
   parseTimelineDate,
 } from '../../utils/analyticsFormat';
@@ -15,7 +16,12 @@ export default function DashboardHiveTemperatureChart({
   timeline,
   hiveName,
   loading = false,
-  height = 280,
+  // Bumped from 280 → 320 (Jun 2026 readability pass). The axis title
+  // ("Bucket Start Time") now lives under the tick labels, so the chart
+  // needs more vertical room for ticks + title + breathing space. 320
+  // keeps the card from feeling cramped while leaving room for the
+  // 12px tick labels and 13px axis title without one clipping the other.
+  height = 320,
 }) {
   if (loading) return <LoadingState label="Loading selected hive telemetry…" />;
 
@@ -50,34 +56,38 @@ export default function DashboardHiveTemperatureChart({
   const [yMin, yMax] = paddedTemperatureDomain([...internal, ...outside]);
 
   return (
-    <div className="-mt-1">
+    <div>
       <LineChart
         height={height}
         skipAnimation
-        margin={{ left: 48, right: 12, top: 8, bottom: 36 }}
+        margin={{ left: 60, right: 12, top: 16, bottom: 16 }}
         xAxis={[{
           data: timestamps,
           scaleType: 'time',
           min: domainStart ?? undefined,
           max: domainEnd ?? undefined,
+          label: 'Bucket Start Time',
           valueFormatter: (value, context) =>
             context.location === 'tick'
               ? formatChartTime(value, '1d')
               : formatChartTooltipTime(value),
           tickLabelInterval: (_, index) => index % tickEvery === 0,
-          tickLabelStyle: { fill: 'rgba(255,255,255,0.58)', fontSize: 11 },
+          tickLabelStyle: { fill: 'rgba(255,255,255,0.62)', fontSize: 12 },
+          labelStyle: { fill: 'rgba(255,255,255,0.65)', fontSize: 13 },
         }]}
         yAxis={[{
+          label: 'Temperature (°F)',
           min: yMin,
           max: yMax,
           valueFormatter: value => `${value}°F`,
-          tickLabelStyle: { fill: 'rgba(255,255,255,0.58)', fontSize: 11 },
+          tickLabelStyle: { fill: 'rgba(255,255,255,0.62)', fontSize: 12 },
+          labelStyle: { fill: 'rgba(255,255,255,0.65)', fontSize: 13 },
         }]}
         series={[
           {
             data: internal,
             label: 'Internal',
-            color: '#F5B942',
+            color: INTERNAL_TEMPERATURE_COLOR,
             showMark: false,
             curve: 'monotoneX',
             // Internal hive temps — always 2 decimals so the 1/10 °F

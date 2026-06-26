@@ -107,8 +107,9 @@ function SummaryMetric({
  *     Critical / Offline) get 1 unit each; Outside gets ~3.2 units so
  *     the full yard name + temperature fit; Unresolved gets ~1.5 units.
  *     The grid template is built from the runtime metrics array and
- *     applied at xl via the `--ops-cols` CSS custom property + the
- *     matching media query in `index.css`.
+ *     applied at xl via a `--ops-cols` CSS variable, gated by a Tailwind
+ *     arbitrary-property variant (`xl:[grid-template-columns:var(--ops-cols)]`)
+ *     so it only takes effect at xl and above.
  *   - sm  (≥640px):  4+3 split (4 cells row 1, 3 cells row 2).
  *   - <640px:        2-col grid, no dividers, no horizontal scroll.
  */
@@ -119,7 +120,9 @@ export default function OperationsSummaryStrip({
 }) {
   // Build the xl column template from per-metric widths. The sum of
   // widths is normalised to fill the available width. Below xl the
-  // grid uses equal columns (2 / 4) so this template doesn't apply.
+  // strip uses equal columns (2 / 4) via Tailwind; the xl template
+  // is consumed by the `xl:[grid-template-columns:var(--ops-cols)]`
+  // class on the grid element.
   const xlTemplate = metrics
     .map(m => `${m.width ?? 1}fr`)
     .join(' ');
@@ -131,8 +134,7 @@ export default function OperationsSummaryStrip({
       aria-label={rangeLabel ? `Operations summary (${rangeLabel})` : 'Operations summary'}
     >
       <div
-        data-ops-strip
-        className="grid grid-cols-2 sm:grid-cols-4"
+        className="grid grid-cols-2 sm:grid-cols-4 xl:[grid-template-columns:var(--ops-cols)]"
         style={{ '--ops-cols': xlTemplate }}
       >
         {metrics.map((metric, index) => {
