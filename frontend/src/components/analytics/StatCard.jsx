@@ -1,40 +1,62 @@
-export default function StatCard({ label, value, detail, tone = 'default', onClick, compact = false }) {
-  const toneColor = {
-    default: 'var(--amber)',
-    healthy: 'var(--success)',
-    warning: 'var(--warning)',
-    critical: 'var(--error)',
-    muted: 'var(--text-muted)',
-  }[tone] || 'var(--amber)';
+import { getTone } from './tones';
+
+const SIZE = {
+  // compact: dense stat grid (e.g. SelectedHiveSection side panel).
+  compact: {
+    card: 'min-h-[104px] p-3.5',
+    value: 'text-[21px] leading-[1.08]',
+    dot: 'h-2 w-2',
+  },
+  // regular: top-level cards.
+  regular: {
+    card: 'min-h-[128px] p-[18px]',
+    value: 'text-[28px] leading-[1.08]',
+    dot: 'h-2 w-2',
+  },
+};
+
+/**
+ * Single-stat card: micro label + value + optional detail line.
+ *
+ * Renders as a <button> when `onClick` is supplied so it stays
+ * keyboard-accessible. A clickable card gets a hover lift, a focus ring,
+ * and a subtle border-amber tint on hover.
+ */
+export default function StatCard({
+  label,
+  value,
+  detail,
+  tone = 'default',
+  onClick,
+  compact = false,
+}) {
+  const toneTokens = getTone(tone);
+  const size = SIZE[compact ? 'compact' : 'regular'];
   const Tag = onClick ? 'button' : 'div';
+
+  const baseClass =
+    'flex w-full min-w-0 flex-col gap-2 border border-line bg-surface-elevated text-left text-ink-primary shadow-card-sm transition';
+  const clickClass = onClick
+    ? 'cursor-pointer hover:-translate-y-px hover:border-amber/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-bg'
+    : '';
 
   return (
     <Tag
-      className={`analytics-card stat-card${compact ? ' stat-card-compact' : ''}${onClick ? ' stat-card-clickable' : ''}`}
       type={onClick ? 'button' : undefined}
       onClick={onClick}
+      className={`${baseClass} ${size.card} ${clickClass} ${onClick ? toneTokens.ring : ''}`}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'flex-start' }}>
-        <div className="field-label">{label}</div>
-        <span
-          aria-hidden="true"
-          style={{
-            width: '8px',
-            height: '8px',
-            borderRadius: '50%',
-            background: toneColor,
-            marginTop: '4px',
-            boxShadow: `0 0 0 4px color-mix(in srgb, ${toneColor} 18%, transparent)`,
-          }}
-        />
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-ink-muted">
+          {label}
+        </div>
+        <span aria-hidden="true" className={`mt-1 rounded-full ${size.dot} ${toneTokens.dot}`} />
       </div>
-      <div style={{ marginTop: compact ? '8px' : '12px', fontSize: compact ? '21px' : '28px', lineHeight: 1.08, fontWeight: 850, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
+      <div className={`font-extrabold ${size.value} [overflow-wrap:anywhere]`}>
         {value}
       </div>
       {detail && (
-        <div style={{ marginTop: compact ? '6px' : '8px', fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.35 }}>
-          {detail}
-        </div>
+        <div className="text-[12px] leading-snug text-ink-muted">{detail}</div>
       )}
     </Tag>
   );

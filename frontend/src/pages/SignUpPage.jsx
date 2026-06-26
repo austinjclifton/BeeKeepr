@@ -2,6 +2,10 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { apiFetch, setCsrfToken, setCurrentUser } from '../api';
 
+const fieldLabelClass = 'mb-1.5 block text-[11px] font-bold uppercase tracking-[0.08em] text-ink-secondary';
+const inputClass = 'w-full rounded-[10px] border border-line bg-white/[0.05] px-3.5 py-2.5 text-sm text-white outline-none transition placeholder:text-ink-muted focus:border-amber focus:bg-white/[0.08]';
+const primaryBtnClass = 'flex w-full cursor-pointer items-center justify-center gap-2 rounded-[10px] border-none bg-amber px-3.5 py-3.5 text-sm font-bold text-navy transition hover:bg-amber-light disabled:cursor-not-allowed disabled:opacity-60';
+
 export default function SignUpPage() {
   const navigate = useNavigate();
 
@@ -53,58 +57,23 @@ export default function SignUpPage() {
     }
   };
 
-  /* Input focus state */
-
-  const onFocus = (e) => {
-    e.target.style.borderColor = 'var(--amber)';
-    e.target.style.background = 'rgba(255,255,255,0.08)';
-  };
-  const onBlur = (e) => {
-    e.target.style.borderColor = 'var(--border)';
-    e.target.style.background = 'rgba(255,255,255,0.05)';
-  };
-
-  const inputStyle = {
-    width: '100%',
-    padding: '11px 14px 11px 40px',
-    border: '1.5px solid var(--border)',
-    borderRadius: '10px',
-    fontSize: '14px',
-    color: 'var(--text-primary)',
-    background: 'rgba(255,255,255,0.05)',
-    outline: 'none',
-    transition: 'border-color 0.15s, background 0.15s',
-  };
-
-  /* Sign-up shell */
-
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'radial-gradient(circle at top right, rgba(245,185,66,0.12), transparent 30rem), var(--bg)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '24px',
-      fontFamily: "'DM Sans', system-ui, sans-serif",
-    }}>
-      <div style={{ width: '100%', maxWidth: '420px', animation: 'fadeIn 0.4s ease' }}>
+    <div
+      className="flex min-h-screen items-center justify-center bg-bg p-6 font-sans"
+      style={{ background: 'radial-gradient(circle at top right, rgba(245,185,66,0.12), transparent 30rem), #050505' }}
+    >
+      <div className="w-full max-w-[420px] animate-fade-in">
 
         {/* Brand header */}
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-            <div style={{
-              width: '48px', height: '48px',
-              background: 'var(--amber)',
-              borderRadius: '14px',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
+        <div className="mb-8 text-center">
+          <div className="mb-2 inline-flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-[14px] bg-amber">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
                 <path d="M12 2C8 2 5 5 5 9c0 2.5 1.2 4.7 3 6.1V20a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-4.9c1.8-1.4 3-3.6 3-6.1 0-4-3-7-7-7z" fill="white" opacity="0.95" />
               </svg>
             </div>
-            <div style={{ textAlign: 'left' }}>
-              <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1, letterSpacing: '-0.02em' }}>
+            <div className="text-left">
+              <div className="text-[28px] font-extrabold leading-[1.1] tracking-[-0.02em] text-white">
                 BeeKeepr
               </div>
             </div>
@@ -112,28 +81,21 @@ export default function SignUpPage() {
         </div>
 
         {/* Sign-up card */}
-        <div style={{
-          background: 'var(--surface-elevated)',
-          border: '1px solid var(--border)',
-          borderRadius: '16px',
-          boxShadow: 'var(--shadow-lg)',
-          overflow: 'hidden',
-        }}>
+        <div className="overflow-hidden rounded-lg border border-line bg-surface-elevated shadow-card-lg">
           {/* Accent bar */}
-          <div style={{ height: '4px', background: 'linear-gradient(90deg, var(--navy) 0%, var(--amber) 100%)' }} />
+          <div className="h-1" style={{ background: 'linear-gradient(90deg, #050505 0%, #f5b942 100%)' }} />
 
-          <div style={{ padding: '36px 36px 32px' }}>
-            <div style={{ marginBottom: '24px' }}>
-              <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '4px' }}>
+          <div className="px-9 pt-9 pb-8">
+            <div className="mb-6">
+              <div className="mb-1 text-[18px] font-extrabold text-white">
                 Create your account
               </div>
-              <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+              <div className="text-[13px] text-ink-muted">
                 Already have an account?{' '}
                 <Link
                   to="/"
-                  style={{ color: 'var(--amber)', fontWeight: 600, textDecoration: 'none' }}
-                  onMouseEnter={e => e.target.style.opacity = '0.75'}
-                  onMouseLeave={e => e.target.style.opacity = '1'}
+                  className="font-semibold text-amber transition hover:opacity-75"
+                  style={{ textDecoration: 'none' }}
                 >
                   Sign in
                 </Link>
@@ -142,20 +104,8 @@ export default function SignUpPage() {
 
             {/* Error banner */}
             {error && (
-              <div style={{
-                marginBottom: '20px',
-                padding: '12px 14px',
-                background: '#fef2f2',
-                border: '1px solid #fecaca',
-                borderRadius: '10px',
-                color: '#dc2626',
-                fontSize: '13px',
-                fontWeight: 500,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <div className="mb-5 flex items-center gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-[13px] font-medium text-red-700">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
                 {error}
@@ -165,16 +115,12 @@ export default function SignUpPage() {
             <form onSubmit={handleSignUp} noValidate>
 
               {/* Username */}
-              <div style={{ marginBottom: '18px' }}>
-                <label style={{
-                  display: 'block', marginBottom: '7px',
-                  fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)',
-                  letterSpacing: '0.08em', textTransform: 'uppercase',
-                }}>
+              <div className="mb-[18px]">
+                <label className={fieldLabelClass}>
                   Username
                 </label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                       <circle cx="12" cy="7" r="4" />
@@ -187,24 +133,18 @@ export default function SignUpPage() {
                     onChange={e => setUsername(e.target.value)}
                     required
                     autoFocus
-                    style={inputStyle}
-                    onFocus={onFocus}
-                    onBlur={onBlur}
+                    className={`${inputClass} pl-10`}
                   />
                 </div>
               </div>
 
               {/* Email */}
-              <div style={{ marginBottom: '18px' }}>
-                <label style={{
-                  display: 'block', marginBottom: '7px',
-                  fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)',
-                  letterSpacing: '0.08em', textTransform: 'uppercase',
-                }}>
+              <div className="mb-[18px]">
+                <label className={fieldLabelClass}>
                   Email Address
                 </label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                       <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
                       <polyline points="22,6 12,13 2,6" />
@@ -216,24 +156,18 @@ export default function SignUpPage() {
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     required
-                    style={inputStyle}
-                    onFocus={onFocus}
-                    onBlur={onBlur}
+                    className={`${inputClass} pl-10`}
                   />
                 </div>
               </div>
 
               {/* Password */}
-              <div style={{ marginBottom: '18px' }}>
-                <label style={{
-                  display: 'block', marginBottom: '7px',
-                  fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)',
-                  letterSpacing: '0.08em', textTransform: 'uppercase',
-                }}>
+              <div className="mb-[18px]">
+                <label className={fieldLabelClass}>
                   Password
                 </label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                       <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                       <path d="M7 11V7a5 5 0 0 1 10 0v4" />
@@ -245,24 +179,18 @@ export default function SignUpPage() {
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     required
-                    style={inputStyle}
-                    onFocus={onFocus}
-                    onBlur={onBlur}
+                    className={`${inputClass} pl-10`}
                   />
                 </div>
               </div>
 
               {/* Confirm Password */}
-              <div style={{ marginBottom: '28px' }}>
-                <label style={{
-                  display: 'block', marginBottom: '7px',
-                  fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)',
-                  letterSpacing: '0.08em', textTransform: 'uppercase',
-                }}>
+              <div className="mb-7">
+                <label className={fieldLabelClass}>
                   Confirm Password
                 </label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                       <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                       <path d="M7 11V7a5 5 0 0 1 10 0v4" />
@@ -274,20 +202,17 @@ export default function SignUpPage() {
                     value={confirmPassword}
                     onChange={e => setConfirmPassword(e.target.value)}
                     required
+                    className={`${inputClass} pl-10`}
                     style={{
-                      ...inputStyle,
-                      // Flag password mismatch
                       borderColor: confirmPassword && password !== confirmPassword
                         ? '#fca5a5'
-                        : 'var(--border)',
+                        : undefined,
                     }}
-                    onFocus={onFocus}
-                    onBlur={onBlur}
                   />
                 </div>
                 {/* Mismatch hint */}
                 {confirmPassword && password !== confirmPassword && (
-                  <div style={{ marginTop: '5px', fontSize: '12px', color: '#dc2626' }}>
+                  <div className="mt-1.5 text-[12px] text-red-700">
                     Passwords do not match
                   </div>
                 )}
@@ -297,29 +222,11 @@ export default function SignUpPage() {
               <button
                 type="submit"
                 disabled={loading}
-                style={{
-                  width: '100%',
-                  padding: '13px',
-                  background: loading ? '#555' : 'var(--amber)',
-                  color: '#050505',
-                  border: 'none',
-                  borderRadius: '10px',
-                  fontWeight: 700,
-                  fontSize: '14px',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  transition: 'background 0.15s',
-                  letterSpacing: '0.01em',
-                }}
-                onMouseEnter={e => { if (!loading) e.currentTarget.style.background = 'var(--amber-light)'; }}
-                onMouseLeave={e => { if (!loading) e.currentTarget.style.background = 'var(--amber)'; }}
+                className={primaryBtnClass}
               >
                 {loading ? (
                   <>
-                    <span style={{ animation: 'pulse 1s infinite', display: 'inline-block' }}>●</span>
+                    <span className="inline-block animate-pulse">●</span>
                     Creating account…
                   </>
                 ) : (

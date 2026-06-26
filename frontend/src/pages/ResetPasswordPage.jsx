@@ -2,6 +2,11 @@ import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../api';
 
+const fieldLabelClass = 'mb-2 text-[11px] font-extrabold uppercase tracking-[0.08em] text-ink-muted';
+const inputClass = 'w-full rounded-md border border-line bg-white/[0.05] px-3 py-2.5 text-sm text-white outline-none focus:border-amber';
+const primaryBtnClass = 'cursor-pointer rounded-pill border-none bg-amber px-3.5 py-2.5 text-[12px] font-black text-navy transition disabled:cursor-not-allowed disabled:opacity-55';
+const ghostBtnClass = 'cursor-pointer rounded-pill border border-line bg-white/[0.05] px-3 py-2 text-center text-[12px] font-extrabold text-ink-secondary transition hover:border-amber/45 hover:text-white';
+
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -45,46 +50,44 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'radial-gradient(circle at top right, rgba(245,185,66,0.12), transparent 30rem), var(--bg)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '24px',
-      fontFamily: "'DM Sans', system-ui, sans-serif",
-    }}>
+    <div
+      className="flex min-h-screen items-center justify-center bg-bg p-6 font-sans"
+      style={{ background: 'radial-gradient(circle at top right, rgba(245,185,66,0.12), transparent 30rem), #050505' }}
+    >
       <form
         onSubmit={handleSubmit}
-        className="analytics-card"
-        style={{ width: '100%', maxWidth: '420px', padding: '32px', animation: 'fadeIn 0.3s ease' }}
+        className="w-full max-w-[420px] animate-fade-in p-8"
       >
-        <div style={{ marginBottom: '24px' }}>
-          <div style={{ color: 'var(--amber)', fontSize: '12px', fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+        <div className="mb-6">
+          <div className="text-[12px] font-black uppercase tracking-[0.08em] text-amber">
             Account Security
           </div>
-          <h1 style={{ color: 'var(--text-primary)', fontSize: '28px', lineHeight: 1.1, marginTop: '6px' }}>Reset Password</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '8px' }}>
+          <h1 className="mt-1.5 text-[28px] leading-[1.1] text-white">Reset Password</h1>
+          <p className="mt-2 text-[14px] text-ink-secondary">
             Enter a new password for your BeeKeepr account.
           </p>
         </div>
 
         {error && (
-          <div style={{ marginBottom: '16px', padding: '12px 14px', background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '10px', color: '#fecaca', fontSize: '13px', fontWeight: 700 }}>
+          <div
+            className="mb-4 rounded-md border border-red-500/35 bg-red-500/15 p-3 text-[13px] font-bold text-red-200"
+          >
             {error}
           </div>
         )}
         {success && (
-          <div style={{ marginBottom: '16px', padding: '12px 14px', background: 'rgba(34,197,94,0.14)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: '10px', color: '#bbf7d0', fontSize: '13px', fontWeight: 700 }}>
+          <div
+            className="mb-4 rounded-md border border-green-500/35 bg-green-500/15 p-3 text-[13px] font-bold text-green-200"
+          >
             Password reset. Returning to login…
           </div>
         )}
 
-        <div style={{ display: 'grid', gap: '14px' }}>
+        <div className="grid gap-3.5">
           <label>
-            <div className="field-label" style={{ marginBottom: '8px' }}>New Password</div>
+            <div className={fieldLabelClass}>New Password</div>
             <input
-              className="dark-input"
+              className={inputClass}
               type="password"
               value={password}
               onChange={event => setPassword(event.target.value)}
@@ -92,19 +95,19 @@ export default function ResetPasswordPage() {
             />
           </label>
           <label>
-            <div className="field-label" style={{ marginBottom: '8px' }}>Confirm Password</div>
+            <div className={fieldLabelClass}>Confirm Password</div>
             <input
-              className="dark-input"
+              className={inputClass}
               type="password"
               value={confirm}
               onChange={event => setConfirm(event.target.value)}
               autoComplete="new-password"
             />
           </label>
-          <button type="submit" className="primary-btn" disabled={loading || success}>
+          <button type="submit" className={primaryBtnClass} disabled={loading || success}>
             {loading ? 'Resetting…' : 'Reset Password'}
           </button>
-          <Link to="/" className="ghost-btn" style={{ textAlign: 'center' }}>
+          <Link to="/" className={ghostBtnClass}>
             Back to Login
           </Link>
         </div>

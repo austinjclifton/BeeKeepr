@@ -16,28 +16,36 @@ loader is the Node service.
 
 Two locations, five hives, one device per hive:
 
-| Location key | Name                         | City          | Time zone         |
-| ------------ | ---------------------------- | ------------- | ----------------- |
-| `app`        | Blue Ridge Appalachia Demo Yard | Asheville, NC | America/New_York |
-| `wny`        | Western New York Demo Yard   | Buffalo, NY   | America/New_York  |
+| Location key | Name                            | City          | Time zone         |
+| ------------ | ------------------------------- | ------------- | ----------------- |
+| `app`        | Blue Ridge Appalachia Demo Yard | Asheville, NC | America/New_York  |
+| `roc`        | Rochester Demo Yard             | Rochester, NY | America/New_York  |
 
-| Hive key  | Location | Name                    |
-| --------- | -------- | ----------------------- |
-| `app-01`  | `app`    | Blue Ridge Stable Hive  |
-| `app-02`  | `app`    | Pisgah Orchard Hive     |
-| `wny-01`  | `wny`    | Lake Erie Stable Hive   |
-| `wny-02`  | `wny`    | Niagara Snowbelt Hive   |
-| `wny-03`  | `wny`    | Finger Lakes Variable Hive |
+| Hive key  | Location | Name                  |
+| --------- | -------- | --------------------- |
+| `app-01`  | `app`    | Biltmore Estate Hive  |
+| `app-02`  | `app`    | Mount Pisgah Hive     |
+| `roc-01`  | `roc`    | Lake Ontario Hive     |
+| `roc-02`  | `roc`    | Highland Park Hive    |
+| `roc-03`  | `roc`    | Erie Canal Hive       |
 
 The config also controls:
 
 - **Account defaults:** `account.username`, `account.email`,
   `account.password` (overridable via `DEMO_ACCOUNT_USERNAME`,
   `DEMO_ACCOUNT_EMAIL`, `DEMO_ACCOUNT_PASSWORD` env vars).
-- **History window and cadence:** `history.months` (default `18`),
-  `history.intervalMinutes` (default `10`).
-- **Provider tag** for generated external conditions: `provider`
-  (default `demo-simulator`).
+- **History window and cadence:** `history.days` (default `30`),
+  `history.intervalMinutes` (default `10`). `--days` on the
+  backfill CLI takes precedence; `--months` is also accepted for
+  backward compatibility.
+- **Tick behavior:** `tick.useRealWeather` (default `true`) —
+  when true, the demo tick calls the real OpenWeather One Call 3.0
+  endpoint per location and writes rows with
+  `provider = "openweather"`. When false (or when the API call
+  fails), the tick falls back to synthesis with
+  `provider = "demo-simulator"`.
+- **Provider tag** for synthesized rows: `provider` (default
+  `"demo-simulator"`).
 - **Alert thresholds:** `thresholds.alertsEnabled`,
   `thresholds.warningLowThreshold`, `thresholds.warningHighThreshold`,
   `thresholds.criticalLowThreshold`, `thresholds.criticalHighThreshold`.
@@ -53,6 +61,32 @@ Scenario entries support `type`, `start`, `durationMinutes`,
 The service validates the config at module load — duplicate location
 keys, duplicate hive keys, unknown `hive.locationKey`, or empty
 `locations`/`hives` arrays all fail fast with a clear message.
+
+## Real weather in the tick (and what backfill does)
+
+The `demo:tick` script is wired up to use **real OpenWeather One Call
+3.0** data when `tick.useRealWeather` is `true` (the default). Each
+tick does one API call per configured location, so for 2 locations
+the per-day cost is 2 × 144 = 288 calls — well under the 1,000/day
+free tier. The OpenWeather service is the same one used by the
+"Fetch current weather" button on the dashboard and by real-device
+ingest paths.
+
+The 30-day **backfill**, on the other hand, uses **synthesized
+weather**. OpenWeather's historical (Timemachine) endpoint is a paid
+feature (~ $0.01 per call), and 30 days × 2 locations × 6 buckets/hr
+× 24 hr is ~ 8,640 calls per backfill — too expensive. So the
+backfill rows have `provider = "demo-simulator"` and the live tick
+rows have `provider = "openweather"`. You can see both side by side
+in the dashboard, and the internal hive temps respond to the
+synthesized outside temp in the historical view and to the real
+outside temp in the live view.
+
+This is the desired behavior for development and prod alike, and the
+`OPENWEATHER_API_KEY` env var **must be set** wherever the tick runs
+for real weather to be used. If the key is missing or the call
+fails, the tick falls back to synthesis for that bucket and the
+internal reading still has plausible inputs.
 
 ## Scripts and recommended order
 
@@ -74,7 +108,7 @@ All demo scripts live in `backend/` and are listed in
 cd backend
 npm run db:migrate      # apply schema.sql
 npm run db:seed:demo    # create demo topology
-npm run demo:backfill   # generate 18 months of history (default flags)
+npm run demo:backfill   # generate 30 days of history (default flags)
 ```
 
 ### After editing the config (rename / remove / add a hive or location)
@@ -96,13 +130,15 @@ sequence above when you want to reset the generated history as well.
 ```sh
 npm run demo:backfill -- --withAlerts
 npm run demo:backfill -- --start=2026-01-01T00:00:00.000Z --end=2026-02-01T00:00:00.000Z
-npm run demo:backfill -- --months=6 --intervalMinutes=10
+npm run demo:backfill -- --days=30 --intervalMinutes=10
 ```
 
 Supported arguments: `--start=ISO_DATE`, `--end=ISO_DATE`,
-`--months=18`, `--intervalMinutes=10`, `--withAlerts`. Dates are
-floored to the configured bucket interval and clamped to the current
-bucket; future buckets are skipped and reported in the summary.
+`--days=30`, `--months=18` (legacy), `--intervalMinutes=10`,
+`--withAlerts`. `--days` takes precedence over `--months` when both
+are supplied. Dates are floored to the configured bucket interval
+and clamped to the current bucket; future buckets are skipped and
+reported in the summary.
 
 ### `npm run demo:tick`
 
@@ -135,10 +171,11 @@ cron to keep the demo looking "live" between manual backfills.
 
 ## Operational notes
 
-An 18-month, 10-minute backfill creates roughly 78,000 buckets per
-metric. With the default config that is about 390,000 hive readings
-plus 156,000 external condition rows before dedupe, so run it
-intentionally against the target database.
+A 30-day, 10-minute backfill creates roughly 4,320 buckets per metric.
+With the default config that is about 21,600 hive readings plus
+8,640 external condition rows before dedupe — well within the
+budget of a normal demo database. (The previous 18-month default
+produced ~ 78,000 buckets/metric and ~ 546,000 total rows.)
 
 Backfill is idempotent for existing buckets: readings and external
 conditions that already exist are skipped. If you need regenerated
@@ -247,8 +284,8 @@ npm run demo:reset-readings
 # E. Re-seed the topology after reset (cheap; ensures hives exist)
 npm run db:seed:demo
 
-# F. Generate 18 months of history at 10-minute buckets, with alerts
-npm run demo:backfill -- --months=18 --intervalMinutes=10 --withAlerts=true
+# F. Generate 30 days of history at 10-minute buckets, with alerts
+npm run demo:backfill -- --days=30 --intervalMinutes=10 --withAlerts=true
 
 # G. One manual tick to confirm the recurring job will work
 npm run demo:tick
@@ -278,27 +315,34 @@ SELECT name FROM hive ORDER BY name;
 
 Expected:
 
-- 2 locations — `Blue Ridge Appalachia Demo Yard`, `Western New York Demo Yard`
-- 5 hives — `Blue Ridge Stable Hive`, `Pisgah Orchard Hive`,
-  `Lake Erie Stable Hive`, `Niagara Snowbelt Hive`, `Finger Lakes Variable Hive`
+- 2 locations — `Blue Ridge Appalachia Demo Yard`, `Rochester Demo Yard`
+- 5 hives — `Biltmore Estate Hive`, `Mount Pisgah Hive`,
+  `Lake Ontario Hive`, `Highland Park Hive`, `Erie Canal Hive`
 - 5 devices (one per hive)
 - external_conditions / readings populated by the backfill (orders of
-  magnitude depend on `--months` and `--intervalMinutes`)
+  magnitude depend on `--days` / `--months` and `--intervalMinutes`)
 - alerts populated when `--withAlerts=true` was used
+- The most recent external_condition row per location has
+  `provider = 'openweather'` (written by the live tick); older rows
+  from the backfill window have `provider = 'demo-simulator'`
 
-Confirm no California-era demo data lingers after a rename or prune:
+Confirm no legacy Buffalo / WNY-era demo data lingers after the
+Rochester swap:
 
 ```sql
 SELECT *
 FROM location
-WHERE name ILIKE '%California%'
-   OR name ILIKE '%Davis%';
+WHERE name ILIKE '%Western New York%'
+   OR name ILIKE '%Buffalo%'
+   OR name ILIKE '%California%';
 
 SELECT *
 FROM hive
-WHERE name ILIKE '%Yolo%'
-   OR name ILIKE '%Delta%'
-   OR name ILIKE '%Solano%'
+WHERE name ILIKE '%Lake Erie Stable%'
+   OR name ILIKE '%Niagara Snowbelt%'
+   OR name ILIKE '%Finger Lakes Variable%'
+   OR name ILIKE '%Blue Ridge Stable%'
+   OR name ILIKE '%Pisgah Orchard%'
    OR name ILIKE '%California%';
 ```
 

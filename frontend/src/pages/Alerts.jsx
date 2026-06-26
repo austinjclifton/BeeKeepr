@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import HamburgerBtn from '../components/HamburgerBtn';
 import Navigation from '../components/Navigation';
 import DashboardSection from '../components/analytics/DashboardSection';
 import HiveSelector from '../components/analytics/HiveSelector';
@@ -16,27 +17,17 @@ import {
 } from '../utils/analyticsFormat';
 
 const SEVERITY_COLORS = {
-  critical: 'var(--error)',
-  warning: 'var(--warning)',
-  info: 'var(--info)',
+  critical: '#ef4444',
+  warning: '#f59e0b',
+  info: '#60a5fa',
 };
 
-function HamburgerBtn() {
-  return (
-    <button
-      className="mobile-menu-btn"
-      type="button"
-      onClick={() => window.dispatchEvent(new Event('openMobileNav'))}
-      aria-label="Open navigation"
-    >
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-        <line x1="3" y1="6" x2="21" y2="6" />
-        <line x1="3" y1="12" x2="21" y2="12" />
-        <line x1="3" y1="18" x2="21" y2="18" />
-      </svg>
-    </button>
-  );
-}
+const statGridClass = 'grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4';
+const fieldLabelClass = 'mb-2 text-[11px] font-extrabold uppercase tracking-[0.08em] text-ink-muted';
+const selectClass = 'w-full rounded-md border border-line bg-white/[0.05] px-3 py-2.5 text-sm text-white outline-none focus:border-amber';
+const inputClass = 'flex-[1_1_220px] rounded-md border border-line bg-white/[0.05] px-3 py-2.5 text-sm text-white outline-none focus:border-amber';
+const primaryBtnClass = 'cursor-pointer rounded-pill border-none bg-amber px-3.5 py-2.5 text-[12px] font-black text-navy transition disabled:cursor-not-allowed disabled:opacity-55';
+const ghostBtnClass = 'cursor-pointer rounded-pill border border-line bg-white/[0.05] px-3 py-2 text-[12px] font-extrabold text-ink-secondary transition hover:border-amber/45 hover:text-white disabled:cursor-not-allowed disabled:opacity-55';
 
 function mapApiAlert(alert, hiveNames) {
   const hiveId = Number(alert.hive_id);
@@ -144,18 +135,18 @@ export default function Alerts() {
   };
 
   return (
-    <div className="app-shell">
+    <div className="app-shell flex min-h-screen">
       <Navigation />
-      <main className="page-main">
-        <div className="page-content">
-          <header className="page-header">
+      <main className="flex-1 min-w-0 overflow-auto">
+        <div className="mx-auto w-full max-w-content px-7 py-7">
+          <header className="mb-6 flex flex-wrap items-start justify-between gap-5">
             <div>
-              <div className="page-title-row">
+              <div className="flex items-center gap-2.5">
                 <HamburgerBtn />
-                <div className="page-kicker">Activity</div>
+                <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-ink-muted">Activity</div>
               </div>
-              <h1>Alerts</h1>
-              <p className="page-subtitle">Temperature threshold activity across all owned hives.</p>
+              <h1 className="text-[clamp(26px,4vw,42px)] font-black leading-none text-white">Alerts</h1>
+              <p className="mt-2 text-[14px] text-ink-secondary">Temperature threshold activity across all owned hives.</p>
             </div>
             <HiveSelector
               hives={status.hives}
@@ -167,7 +158,7 @@ export default function Alerts() {
             />
           </header>
 
-          <div className="stat-grid">
+          <div className={statGridClass}>
             <StatCard label="Total Alerts" value={metricsLoading ? '—' : String(counts.total)} detail="Loaded from the activity API" />
             <StatCard label="Active" value={metricsLoading ? '—' : String(counts.active)} detail="Unresolved alerts" tone="warning" />
             <StatCard label="Warnings" value={metricsLoading ? '—' : String(counts.warning)} tone="warning" />
@@ -175,23 +166,22 @@ export default function Alerts() {
           </div>
 
           {isDemoAccount && (
-            <div className="analytics-card" style={{ padding: '14px 16px', marginTop: '18px', borderColor: 'rgba(245,185,66,0.35)', color: 'var(--text-secondary)' }}>
-              <strong style={{ color: 'var(--amber)' }}>Demo account:</strong> alert resolution is disabled for shared demo data.
+            <div className="mt-4.5 border-amber/35 p-3.5 text-ink-secondary">
+              <strong className="text-amber">Demo account:</strong> alert resolution is disabled for shared demo data.
             </div>
           )}
 
           <DashboardSection title="Alert Stream" eyebrow="Multi-Hive">
-            <div className="analytics-card" style={{ padding: '16px', marginBottom: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                <button type="button" className={severityFilter === 'all' ? 'primary-btn' : 'ghost-btn'} onClick={() => setSeverityFilter('all')}>All Severity</button>
-                <button type="button" className={severityFilter === 'critical' ? 'primary-btn' : 'ghost-btn'} onClick={() => setSeverityFilter('critical')}>Critical</button>
-                <button type="button" className={severityFilter === 'warning' ? 'primary-btn' : 'ghost-btn'} onClick={() => setSeverityFilter('warning')}>Warning</button>
-                <button type="button" className={statusFilter === 'active' ? 'primary-btn' : 'ghost-btn'} onClick={() => setStatusFilter('active')}>Active</button>
-                <button type="button" className={statusFilter === 'resolved' ? 'primary-btn' : 'ghost-btn'} onClick={() => setStatusFilter('resolved')}>Resolved</button>
-                <button type="button" className={statusFilter === 'all' ? 'primary-btn' : 'ghost-btn'} onClick={() => setStatusFilter('all')}>All Status</button>
+            <div className="mb-3.5 p-4">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button type="button" className={severityFilter === 'all' ? primaryBtnClass : ghostBtnClass} onClick={() => setSeverityFilter('all')}>All Severity</button>
+                <button type="button" className={severityFilter === 'critical' ? primaryBtnClass : ghostBtnClass} onClick={() => setSeverityFilter('critical')}>Critical</button>
+                <button type="button" className={severityFilter === 'warning' ? primaryBtnClass : ghostBtnClass} onClick={() => setSeverityFilter('warning')}>Warning</button>
+                <button type="button" className={statusFilter === 'active' ? primaryBtnClass : ghostBtnClass} onClick={() => setStatusFilter('active')}>Active</button>
+                <button type="button" className={statusFilter === 'resolved' ? primaryBtnClass : ghostBtnClass} onClick={() => setStatusFilter('resolved')}>Resolved</button>
+                <button type="button" className={statusFilter === 'all' ? primaryBtnClass : ghostBtnClass} onClick={() => setStatusFilter('all')}>All Status</button>
                 <input
-                  className="dark-input"
-                  style={{ flex: '1 1 220px' }}
+                  className={inputClass}
                   value={search}
                   onChange={event => setSearch(event.target.value)}
                   placeholder="Search alerts"
@@ -211,42 +201,41 @@ export default function Alerts() {
                 detail={alerts.length ? 'Adjust filters to see more alerts.' : 'Alerts will appear when readings cross configured thresholds.'}
               />
             ) : (
-              <div style={{ display: 'grid', gap: '10px' }}>
+              <div className="grid gap-2.5">
                 {filtered.map(alert => {
-                  const severityColor = SEVERITY_COLORS[alert.severity] || 'var(--text-muted)';
+                  const severityColor = SEVERITY_COLORS[alert.severity] || 'rgba(255,255,255,0.45)';
                   return (
                     <article
                       key={alert.id}
-                      className="analytics-card"
+                      className="p-4"
                       style={{
-                        padding: '16px',
                         borderLeft: `4px solid ${severityColor}`,
                         opacity: alert.status === 'resolved' ? 0.72 : 1,
                       }}
                     >
-                      <div style={{ display: 'flex', gap: '16px', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                        <div style={{ minWidth: 0, flex: '1 1 360px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div className="min-w-0 flex-[1_1_360px]">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
                             <StatusBadge status={alert.severity} />
                             <StatusBadge status={alert.status === 'resolved' ? 'healthy' : 'warning'} label={titleCase(alert.status)} />
-                            <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>{formatDateTime(alert.time)}</span>
+                            <span className="text-[12px] text-ink-muted">{formatDateTime(alert.time)}</span>
                           </div>
-                          <div style={{ color: 'var(--text-primary)', fontSize: '15px', fontWeight: 850 }}>{alert.title}</div>
-                          <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
+                          <div className="text-[15px] font-extrabold text-white">{alert.title}</div>
+                          <div className="mt-1 text-[13px] text-ink-secondary">
                             {alert.description}
                           </div>
-                          <div style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '8px' }}>
+                          <div className="mt-2 text-[12px] text-ink-muted">
                             {alert.hiveName} · Device {alert.deviceId ?? '—'}
                           </div>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                          <div style={{ textAlign: 'right' }}>
-                            <div className="field-label">Reading</div>
-                            <div style={{ color: 'var(--text-primary)', fontSize: '20px', fontWeight: 900 }}>{formatTemperature(alert.temperature)}</div>
-                            <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Threshold {formatTemperature(alert.threshold)}</div>
+                        <div className="flex flex-wrap items-center justify-end gap-2.5">
+                          <div className="text-right">
+                            <div className={fieldLabelClass}>Reading</div>
+                            <div className="text-[20px] font-black text-white">{formatTemperature(alert.temperature)}</div>
+                            <div className="text-[12px] text-ink-muted">Threshold {formatTemperature(alert.threshold)}</div>
                           </div>
                           {alert.status !== 'resolved' && alert.severity === 'warning' && (
-                            <button type="button" className="primary-btn" onClick={() => handleResolve(alert.id)} disabled={isDemoAccount}>
+                            <button type="button" className={primaryBtnClass} onClick={() => handleResolve(alert.id)} disabled={isDemoAccount}>
                               {isDemoAccount ? 'Read-only' : 'Resolve Warning'}
                             </button>
                           )}

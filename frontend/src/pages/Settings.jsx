@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import HamburgerBtn from '../components/HamburgerBtn';
 import Navigation from '../components/Navigation';
 import DashboardSection from '../components/analytics/DashboardSection';
 import HiveSelector from '../components/analytics/HiveSelector';
@@ -106,29 +107,18 @@ function parseThresholds(values) {
   return parsed;
 }
 
-function HamburgerBtn() {
-  return (
-    <button
-      className="mobile-menu-btn"
-      type="button"
-      onClick={() => window.dispatchEvent(new Event('openMobileNav'))}
-      aria-label="Open navigation"
-    >
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-        <line x1="3" y1="6" x2="21" y2="6" />
-        <line x1="3" y1="12" x2="21" y2="12" />
-        <line x1="3" y1="18" x2="21" y2="18" />
-      </svg>
-    </button>
-  );
-}
+const fieldLabelClass = 'text-[11px] font-extrabold uppercase tracking-[0.08em] text-ink-muted';
+const inputClass = 'w-full rounded-md border border-line bg-white/[0.05] px-3 py-2.5 text-sm text-white outline-none focus:border-amber';
+const primaryBtnClass = 'cursor-pointer rounded-pill border-none bg-amber px-3.5 py-2.5 text-[12px] font-black text-navy transition disabled:cursor-not-allowed disabled:opacity-55';
+const ghostBtnClass = 'cursor-pointer rounded-pill border border-line bg-white/[0.05] px-3 py-2 text-[12px] font-extrabold text-ink-secondary transition hover:border-amber/45 hover:text-white disabled:cursor-not-allowed disabled:opacity-55';
+const statGridClass = 'grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4';
 
 function Field({ label, value, onChange, type = 'text', disabled = false }) {
   return (
-    <label style={{ display: 'grid', gap: '8px' }}>
-      <span className="field-label">{label}</span>
+    <label className="grid gap-2">
+      <span className={fieldLabelClass}>{label}</span>
       <input
-        className="dark-input"
+        className={inputClass}
         type={type}
         value={value}
         disabled={disabled}
@@ -140,18 +130,18 @@ function Field({ label, value, onChange, type = 'text', disabled = false }) {
 
 function ThresholdInput({ label, value, onChange, tone, disabled = false }) {
   return (
-    <label className="analytics-card" style={{ display: 'grid', gap: '10px', padding: '16px' }}>
-      <span className="field-label">{label}</span>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+    <label className="grid gap-2.5 p-4">
+      <span className={fieldLabelClass}>{label}</span>
+      <div className="flex items-center gap-2.5">
         <input
-          className="dark-input"
+          className={inputClass}
           type="number"
           step="0.5"
           value={value}
           disabled={disabled}
           onChange={event => onChange(event.target.value)}
         />
-        <span style={{ color: tone || 'var(--amber)', fontWeight: 900 }}>°F</span>
+        <span className="font-black" style={{ color: tone || '#f5b942' }}>°F</span>
       </div>
     </label>
   );
@@ -191,32 +181,26 @@ function ChangePasswordModal({ onClose, onSuccess }) {
 
   return (
     <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-        padding: '16px',
-      }}
+      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4"
       onClick={event => { if (event.target === event.currentTarget) onClose(); }}
     >
-      <form className="analytics-card" onSubmit={handleSubmit} style={{ width: '100%', maxWidth: '430px', padding: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '18px' }}>
+      <form
+        onSubmit={handleSubmit}
+        className="w-full max-w-[430px] p-6"
+      >
+        <div className="mb-[18px] flex justify-between gap-3">
           <div>
-            <div className="section-eyebrow">Account Security</div>
-            <h2 style={{ color: 'var(--text-primary)', fontSize: '20px' }}>Change Password</h2>
+            <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-ink-muted">Account Security</div>
+            <h2 className="text-[20px] text-white">Change Password</h2>
           </div>
-          <button type="button" className="ghost-btn" onClick={onClose}>Close</button>
+          <button type="button" className={ghostBtnClass} onClick={onClose}>Close</button>
         </div>
         {error && <ErrorState message={error} />}
-        <div style={{ display: 'grid', gap: '14px' }}>
+        <div className="grid gap-3.5">
           <Field label="Current Password" value={current} onChange={setCurrent} type="password" />
           <Field label="New Password" value={next} onChange={setNext} type="password" />
           <Field label="Confirm New Password" value={confirm} onChange={setConfirm} type="password" />
-          <button type="submit" className="primary-btn" disabled={loading}>
+          <button type="submit" className={primaryBtnClass} disabled={loading}>
             {loading ? 'Saving…' : 'Update Password'}
           </button>
         </div>
@@ -406,7 +390,7 @@ export default function Settings() {
   const lastSeen = latestReading?.receivedAt || latestReading?.bucketAt || device?.last_seen_at || device?.lastSeenAt;
 
   return (
-    <div className="app-shell">
+    <div className="app-shell flex min-h-screen">
       <Navigation />
       {showPasswordModal && (
         <ChangePasswordModal
@@ -418,36 +402,30 @@ export default function Settings() {
         />
       )}
       {toast && (
-        <div style={{
-          position: 'fixed',
-          top: '20px',
-          right: '20px',
-          zIndex: 999,
-          background: toast.ok ? 'var(--surface-elevated)' : 'rgba(239,68,68,0.18)',
-          color: toast.ok ? 'var(--text-primary)' : '#fecaca',
-          border: `1px solid ${toast.ok ? 'var(--border)' : 'rgba(239,68,68,0.45)'}`,
-          borderRadius: '14px',
-          padding: '10px 14px',
-          fontSize: '13px',
-          fontWeight: 800,
-          boxShadow: 'var(--shadow-md)',
-        }}>
+        <div
+          className="fixed right-5 top-5 z-[999] rounded-md border px-3.5 py-2.5 text-[13px] font-extrabold shadow-card-md"
+          style={{
+            background: toast.ok ? '#151515' : 'rgba(239,68,68,0.18)',
+            color: toast.ok ? '#ffffff' : '#fecaca',
+            borderColor: toast.ok ? '#2a2a2a' : 'rgba(239,68,68,0.45)',
+          }}
+        >
           {toast.msg}
         </div>
       )}
 
-      <main className="page-main">
-        <div className="page-content">
-          <header className="page-header">
+      <main className="flex-1 min-w-0 overflow-auto">
+        <div className="mx-auto w-full max-w-content px-7 py-7">
+          <header className="mb-6 flex flex-wrap items-start justify-between gap-5">
             <div>
-              <div className="page-title-row">
+              <div className="flex items-center gap-2.5">
                 <HamburgerBtn />
-                <div className="page-kicker">Settings</div>
+                <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-ink-muted">Settings</div>
               </div>
-              <h1>Configuration</h1>
-              <p className="page-subtitle">Manage account details, global alert defaults, and selected-hive device context.</p>
+              <h1 className="text-[clamp(26px,4vw,42px)] font-black leading-none text-white">Configuration</h1>
+              <p className="mt-2 text-[14px] text-ink-secondary">Manage account details, global alert defaults, and selected-hive device context.</p>
             </div>
-            <button type="button" className="primary-btn" onClick={handleSave} disabled={saving || isDemoAccount}>
+            <button type="button" className={primaryBtnClass} onClick={handleSave} disabled={saving || isDemoAccount}>
               {isDemoAccount ? 'Read-Only Demo' : saving ? 'Saving…' : 'Save Settings'}
             </button>
           </header>
@@ -458,14 +436,14 @@ export default function Settings() {
             <>
               {/* Read-only notice */}
               {isDemoAccount && (
-                <div className="analytics-card" style={{ padding: '14px 16px', marginBottom: '18px', borderColor: 'rgba(245,185,66,0.35)', color: 'var(--text-secondary)' }}>
-                  <strong style={{ color: 'var(--amber)' }}>Demo account:</strong> settings are read-only so shared demo data stays intact.
+                <div className="mb-4.5 border-amber/35 p-3.5 text-ink-secondary">
+                  <strong className="text-amber">Demo account:</strong> settings are read-only so shared demo data stays intact.
                 </div>
               )}
 
               {/* Project overview */}
               <DashboardSection title="About BeeKeepr" eyebrow="Project">
-                <div className="analytics-card" style={{ padding: '18px', color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.65 }}>
+                <div className="p-[18px] text-[14px] leading-[1.65] text-ink-secondary">
                   BeeKeepr is a hive monitoring system built to help beekeepers track hive conditions, identify temperature issues, and review long-term colony trends from a central dashboard. The system combines physical sensor hardware, ESP32-based device logic, LoRa communication, backend data ingestion, PostgreSQL storage, alerting, external weather context, analytics, and operational visualizations.
 
                   Each hive is designed to use a temperature sensor connected to an ESP32 board. The ESP32 reads the hive temperature at regular intervals, formats the reading, and sends it wirelessly through a LoRa module. LoRa allows the device to transmit data over longer distances while using low power, which makes it useful for outdoor hive environments where Wi-Fi may be unreliable or unavailable. This allows hive data to be collected from the field without requiring each hive to have a direct internet connection.
@@ -476,13 +454,13 @@ export default function Settings() {
 
               {/* Account details */}
               <DashboardSection title="Account" eyebrow="Profile">
-                <div className="analytics-card" style={{ padding: '18px' }}>
-                  <div className="settings-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                <div className="p-[18px]">
+                  <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
                     <Field label="Full Name" value={displayName} disabled />
                     <Field label="Role" value={localPrefs.role || 'Beekeeper'} onChange={value => setLocalPref('role', value)} />
                     <Field label="Email Address" value={accountEmail} disabled />
-                    <div style={{ display: 'flex', alignItems: 'end' }}>
-                      <button type="button" className="ghost-btn" onClick={() => setShowPasswordModal(true)} disabled={isDemoAccount}>
+                    <div className="flex items-end">
+                      <button type="button" className={ghostBtnClass} onClick={() => setShowPasswordModal(true)} disabled={isDemoAccount}>
                         Change Password
                       </button>
                     </div>
@@ -492,14 +470,14 @@ export default function Settings() {
 
               {/* Global defaults */}
               <DashboardSection title="Global Alert Defaults" eyebrow="Defaults">
-                <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '12px' }}>
+                <div className="mb-3 text-[13px] text-ink-secondary">
                   Global defaults apply to all active hives when saved. Individual hive thresholds can be adjusted afterward in the per-hive editor below.
                 </div>
-                <div className="stat-grid">
-                  <ThresholdInput label="Critical Low" value={localPrefs.criticalLow} onChange={value => setLocalPref('criticalLow', value)} tone="var(--error)" />
-                  <ThresholdInput label="Warning Low" value={localPrefs.optimalLow} onChange={value => setLocalPref('optimalLow', value)} tone="var(--warning)" />
-                  <ThresholdInput label="Warning High" value={localPrefs.optimalHigh} onChange={value => setLocalPref('optimalHigh', value)} tone="var(--warning)" />
-                  <ThresholdInput label="Critical High" value={localPrefs.criticalHigh} onChange={value => setLocalPref('criticalHigh', value)} tone="var(--error)" />
+                <div className={statGridClass}>
+                  <ThresholdInput label="Critical Low" value={localPrefs.criticalLow} onChange={value => setLocalPref('criticalLow', value)} tone="#ef4444" />
+                  <ThresholdInput label="Warning Low" value={localPrefs.optimalLow} onChange={value => setLocalPref('optimalLow', value)} tone="#f59e0b" />
+                  <ThresholdInput label="Warning High" value={localPrefs.optimalHigh} onChange={value => setLocalPref('optimalHigh', value)} tone="#f59e0b" />
+                  <ThresholdInput label="Critical High" value={localPrefs.criticalHigh} onChange={value => setLocalPref('criticalHigh', value)} tone="#ef4444" />
                 </div>
               </DashboardSection>
 
@@ -516,7 +494,7 @@ export default function Settings() {
                   />
                 }
               >
-                <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '12px' }}>
+                <div className="mb-3 text-[13px] text-ink-secondary">
                   These values update only the selected hive. Valid order is critical low, warning low, warning high, critical high.
                 </div>
                 {status.loading ? (
@@ -524,32 +502,32 @@ export default function Settings() {
                 ) : status.error ? (
                   <ErrorState message={status.error} />
                 ) : !selectedHive ? (
-                  <div className="analytics-card" style={{ padding: '18px', color: 'var(--text-secondary)' }}>
+                  <div className="p-[18px] text-ink-secondary">
                     Choose a hive to edit its thresholds.
                   </div>
                 ) : (
-                  <div className="analytics-card" style={{ padding: '18px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                  <div className="p-[18px]">
+                    <div className="mb-3.5 flex flex-wrap justify-between gap-3.5">
                       <div>
-                        <div style={{ color: 'var(--text-primary)', fontSize: '15px', fontWeight: 850 }}>{selectedHiveName}</div>
-                        <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
+                        <div className="text-[15px] font-extrabold text-white">{selectedHiveName}</div>
+                        <div className="text-[12px] text-ink-muted">
                           Hive ID #{getHiveId(selectedHive)} · {selectedHive.locationName || 'No location'}
                         </div>
                       </div>
                       <button
                         type="button"
-                        className="primary-btn"
+                        className={primaryBtnClass}
                         onClick={handleSaveHiveThresholds}
                         disabled={hiveThresholdSaving || isDemoAccount}
                       >
                         {isDemoAccount ? 'Read-Only Demo' : hiveThresholdSaving ? 'Saving…' : 'Save Hive Thresholds'}
                       </button>
                     </div>
-                    <div className="stat-grid">
-                      <ThresholdInput label="Critical Low" value={hiveThresholds.criticalLow} onChange={value => setHiveThreshold('criticalLow', value)} tone="var(--error)" disabled={isDemoAccount} />
-                      <ThresholdInput label="Warning Low" value={hiveThresholds.warningLow} onChange={value => setHiveThreshold('warningLow', value)} tone="var(--warning)" disabled={isDemoAccount} />
-                      <ThresholdInput label="Warning High" value={hiveThresholds.warningHigh} onChange={value => setHiveThreshold('warningHigh', value)} tone="var(--warning)" disabled={isDemoAccount} />
-                      <ThresholdInput label="Critical High" value={hiveThresholds.criticalHigh} onChange={value => setHiveThreshold('criticalHigh', value)} tone="var(--error)" disabled={isDemoAccount} />
+                    <div className={statGridClass}>
+                      <ThresholdInput label="Critical Low" value={hiveThresholds.criticalLow} onChange={value => setHiveThreshold('criticalLow', value)} tone="#ef4444" disabled={isDemoAccount} />
+                      <ThresholdInput label="Warning Low" value={hiveThresholds.warningLow} onChange={value => setHiveThreshold('warningLow', value)} tone="#f59e0b" disabled={isDemoAccount} />
+                      <ThresholdInput label="Warning High" value={hiveThresholds.warningHigh} onChange={value => setHiveThreshold('warningHigh', value)} tone="#f59e0b" disabled={isDemoAccount} />
+                      <ThresholdInput label="Critical High" value={hiveThresholds.criticalHigh} onChange={value => setHiveThreshold('criticalHigh', value)} tone="#ef4444" disabled={isDemoAccount} />
                     </div>
                   </div>
                 )}
@@ -573,7 +551,7 @@ export default function Settings() {
                 ) : status.error ? (
                   <ErrorState message={status.error} />
                 ) : (
-                  <div className="stat-grid">
+                  <div className={statGridClass}>
                     <StatCard label="Selected Hive" value={selectedHiveName} detail={selectedHive?.locationName || 'No location'} />
                     <StatCard label="Hive Health" value={selectedHive?.healthStatus || '—'} detail={selectedHive?.status || 'No status'} />
                     <StatCard label="Device ID" value={device?.id ? `#${device.id}` : '—'} detail={device ? 'One device per hive' : 'No device registered'} />
@@ -581,7 +559,7 @@ export default function Settings() {
                   </div>
                 )}
                 {selectedHive && (
-                  <div style={{ marginTop: '14px' }}>
+                  <div className="mt-3.5">
                     <StatusBadge status={selectedHive.healthStatus} />
                   </div>
                 )}

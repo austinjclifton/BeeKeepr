@@ -35,13 +35,26 @@
  * Current demo world:
  *   - 2 locations:
  *       app — Blue Ridge Appalachia Demo Yard  (Asheville, NC, America/New_York)
- *       wny — Western New York Demo Yard       (Buffalo,  NY, America/New_York)
+ *       roc — Rochester Demo Yard              (Rochester, NY, America/New_York)
  *   - 5 hives (one device each):
- *       app-01  Blue Ridge Stable Hive
- *       app-02  Pisgah Orchard Hive
- *       wny-01  Lake Erie Stable Hive
- *       wny-02  Niagara Snowbelt Hive
- *       wny-03  Finger Lakes Variable Hive
+ *       app-01  Biltmore Estate Hive
+ *       app-02  Mount Pisgah Hive
+ *       roc-01  Lake Ontario Hive
+ *       roc-02  Highland Park Hive
+ *       roc-03  Erie Canal Hive
+ *
+ * History window: 30 days at 10-minute intervals (~4,320 buckets/metric).
+ *
+ * Real weather: the demo tick (`npm run demo:tick`) calls the real
+ * OpenWeather One Call 3.0 endpoint per location when `tick.useRealWeather`
+ * is true. Each tick costs ~2 API calls; with 144 ticks/day that is
+ * ~288 calls/day for 2 locations, well under the 1,000/day free tier.
+ * The 30-day backfill still uses synthesized weather (the OpenWeather
+ * Timemachine endpoint is paid), so backfilled rows have
+ * `provider = "demo-simulator"` and live tick rows have
+ * `provider = "openweather"`. If a real-weather call fails (network,
+ * missing API key, rate limit) the tick falls back to synthesis for
+ * that bucket so the internal reading still has plausible inputs.
  *
  * The module is deeply frozen; mutate keys/objects at your own risk.
  */
@@ -53,8 +66,12 @@ module.exports = Object.freeze({
   }),
 
   history: Object.freeze({
-    months: 18,
+    days: 30,
     intervalMinutes: 10,
+  }),
+
+  tick: Object.freeze({
+    useRealWeather: true,
   }),
 
   provider: "demo-simulator",
@@ -96,26 +113,26 @@ module.exports = Object.freeze({
       }),
     }),
     Object.freeze({
-      key: "wny",
-      name: "Western New York Demo Yard",
-      cityName: "Buffalo, NY",
+      key: "roc",
+      name: "Rochester Demo Yard",
+      cityName: "Rochester, NY",
       timeZone: "America/New_York",
-      lat: 42.8864,
-      lon: -78.8784,
+      lat: 43.1566,
+      lon: -77.6088,
       climate: Object.freeze({
-        averageTempF: 49,
+        averageTempF: 48,
         seasonalAmplitudeF: 28,
-        winterDailyAmplitudeF: 7,
-        summerDailyAmplitudeF: 13,
-        peakDayOfYear: 201,
-        dailyPeakHour: 15.2,
-        synopticNoiseF: 5.0,
+        winterDailyAmplitudeF: 6,
+        summerDailyAmplitudeF: 12,
+        peakDayOfYear: 200,
+        dailyPeakHour: 15.0,
+        synopticNoiseF: 5.2,
         shortNoiseF: 1.3,
-        humidityBasePct: 70,
+        humidityBasePct: 71,
         humidityAmplitudePct: 17,
-        windBaseMps: 3.6,
-        windAmplitudeMps: 1.9,
-        pressureBaseHpa: 1014.8,
+        windBaseMps: 3.4,
+        windAmplitudeMps: 1.7,
+        pressureBaseHpa: 1014.5,
         broodStartDay: 88,
         broodEndDay: 286,
         heatStressTempF: 86,
@@ -128,8 +145,8 @@ module.exports = Object.freeze({
     Object.freeze({
       key: "app-01",
       locationKey: "app",
-      name: "Blue Ridge Stable Hive",
-      notes: "Appalachia demo hive with a stable brood temperature profile",
+      name: "Biltmore Estate Hive",
+      notes: "Asheville demo hive with a stable brood temperature profile",
       installedAt: "2024-11-01T13:00:00.000Z",
       deviceInstalledAt: "2024-11-01T13:00:00.000Z",
       internal: Object.freeze({
@@ -150,11 +167,11 @@ module.exports = Object.freeze({
       }),
       scenarios: Object.freeze([
         Object.freeze({
-          type: "weak_signal",
-          start: "2025-12-08T10:00:00.000Z",
-          durationMinutes: 4320,
-          intensity: 0.42,
-          note: "Short ridge-line reception dip after winter weather",
+          type: "heat_stress",
+          start: "2026-06-12T16:00:00.000Z",
+          durationMinutes: 240,
+          intensity: 0.62,
+          note: "Late-spring heat wave on the estate grounds",
         }),
       ]),
     }),
@@ -162,8 +179,8 @@ module.exports = Object.freeze({
     Object.freeze({
       key: "app-02",
       locationKey: "app",
-      name: "Pisgah Orchard Hive",
-      notes: "Appalachia orchard hive with a short cold ridge-line disturbance",
+      name: "Mount Pisgah Hive",
+      notes: "Asheville ridge-line hive with a brief probe disturbance and a swarm-prep pulse",
       installedAt: "2024-11-01T13:15:00.000Z",
       deviceInstalledAt: "2024-11-01T13:15:00.000Z",
       internal: Object.freeze({
@@ -184,28 +201,27 @@ module.exports = Object.freeze({
       }),
       scenarios: Object.freeze([
         Object.freeze({
-          type: "sensor_issue",
-          start: "2026-01-22T08:30:00.000Z",
-          durationMinutes: 300,
-          intensity: 0.74,
-          direction: "drop",
-          note: "Brief cold ridge-line disturbance captured by the probe",
+          type: "queen_issue",
+          start: "2026-06-08T05:00:00.000Z",
+          durationMinutes: 1440,
+          intensity: 0.48,
+          note: "Slow brood-pattern dip after queen replacement attempt",
         }),
         Object.freeze({
-          type: "brood_decline",
-          start: "2025-05-19T06:00:00.000Z",
-          durationMinutes: 20160,
-          intensity: 0.46,
-          note: "Mild orchard brood regulation dip after a wet spring stretch",
+          type: "swarm",
+          start: "2026-06-15T17:30:00.000Z",
+          durationMinutes: 60,
+          intensity: 0.7,
+          note: "Brief spring swarm preparation pulse on the ridge",
         }),
       ]),
     }),
 
     Object.freeze({
-      key: "wny-01",
-      locationKey: "wny",
-      name: "Lake Erie Stable Hive",
-      notes: "Western New York hive with steadier brood temperatures near the lakeshore",
+      key: "roc-01",
+      locationKey: "roc",
+      name: "Lake Ontario Hive",
+      notes: "Rochester lakeshore hive with steadier brood temperatures near the lake",
       installedAt: "2024-11-01T13:30:00.000Z",
       deviceInstalledAt: "2024-11-01T13:30:00.000Z",
       internal: Object.freeze({
@@ -227,26 +243,19 @@ module.exports = Object.freeze({
       scenarios: Object.freeze([
         Object.freeze({
           type: "swarm",
-          start: "2026-05-09T17:30:00.000Z",
+          start: "2026-05-22T16:30:00.000Z",
           durationMinutes: 60,
           intensity: 0.68,
-          note: "Short spring swarm preparation pulse",
-        }),
-        Object.freeze({
-          type: "weak_signal",
-          start: "2025-12-14T11:00:00.000Z",
-          durationMinutes: 5760,
-          intensity: 0.58,
-          note: "Lake-effect snow and icing weaken gateway reception",
+          note: "Short spring swarm preparation pulse on the lakeshore",
         }),
       ]),
     }),
 
     Object.freeze({
-      key: "wny-02",
-      locationKey: "wny",
-      name: "Niagara Snowbelt Hive",
-      notes: "Western New York hive with stronger cold-season pressure and wider swings",
+      key: "roc-02",
+      locationKey: "roc",
+      name: "Highland Park Hive",
+      notes: "Rochester city-park hive with a brief signal dip and a probe disturbance",
       installedAt: "2024-11-01T13:45:00.000Z",
       deviceInstalledAt: "2024-11-01T13:45:00.000Z",
       internal: Object.freeze({
@@ -267,28 +276,28 @@ module.exports = Object.freeze({
       }),
       scenarios: Object.freeze([
         Object.freeze({
-          type: "brood_decline",
-          start: "2025-06-02T04:00:00.000Z",
-          durationMinutes: 30240,
-          intensity: 0.55,
-          note: "Slow brood decline after a wet late spring",
+          type: "weak_signal",
+          start: "2026-05-30T11:00:00.000Z",
+          durationMinutes: 720,
+          intensity: 0.46,
+          note: "Storm system briefly reduces gateway signal at the park",
         }),
         Object.freeze({
           type: "sensor_issue",
-          start: "2026-03-06T14:20:00.000Z",
+          start: "2026-06-10T09:00:00.000Z",
           durationMinutes: 30,
-          intensity: 0.9,
+          intensity: 0.84,
           direction: "drop",
-          note: "Brief loose-probe drop during a cold snap",
+          note: "Brief loose-probe drop during a wet, cool morning",
         }),
       ]),
     }),
 
     Object.freeze({
-      key: "wny-03",
-      locationKey: "wny",
-      name: "Finger Lakes Variable Hive",
-      notes: "Western New York demo hive with wider swings and occasional probe instability",
+      key: "roc-03",
+      locationKey: "roc",
+      name: "Erie Canal Hive",
+      notes: "Rochester canal-side hive with a multi-day brood decline after a wet stretch",
       installedAt: "2024-11-01T14:00:00.000Z",
       deviceInstalledAt: "2024-11-01T14:00:00.000Z",
       internal: Object.freeze({
@@ -309,19 +318,11 @@ module.exports = Object.freeze({
       }),
       scenarios: Object.freeze([
         Object.freeze({
-          type: "sensor_issue",
-          start: "2025-10-10T01:40:00.000Z",
-          durationMinutes: 20,
-          intensity: 0.76,
-          direction: "spike",
-          note: "Brief warm spike from a loose probe during variable fall conditions",
-        }),
-        Object.freeze({
-          type: "weak_signal",
-          start: "2026-02-04T08:00:00.000Z",
-          durationMinutes: 2160,
-          intensity: 0.52,
-          note: "Snow and terrain briefly reduce gateway signal strength",
+          type: "brood_decline",
+          start: "2026-06-05T04:00:00.000Z",
+          durationMinutes: 4320,
+          intensity: 0.5,
+          note: "Slow brood decline after a wet, cool stretch along the canal",
         }),
       ]),
     }),

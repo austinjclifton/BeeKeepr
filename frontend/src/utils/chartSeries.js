@@ -1,3 +1,13 @@
+/**
+ * Coerce a value to a finite number, or `null` if it can't be parsed.
+ * Used by chart code to safely turn API scalars into numeric points
+ * without scattering `Number.isFinite` checks everywhere.
+ */
+export function nullableNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function parseChartTime(value) {
   if (value instanceof Date) {
     const time = value.getTime();
@@ -53,9 +63,4 @@ export function smoothSeries(values, { windowSize = 3, preserveSpikeThreshold = 
 function normalizeWindowSize(value) {
   const size = Math.max(1, Math.floor(Number(value) || 1));
   return size % 2 === 0 ? size + 1 : size;
-}
-
-function nullableNumber(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
 }

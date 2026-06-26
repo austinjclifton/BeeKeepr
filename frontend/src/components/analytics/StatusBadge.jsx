@@ -1,46 +1,48 @@
 import { titleCase } from '../../utils/analyticsFormat';
 
-const STATUS_COLORS = {
-  healthy: { color: '#22c55e', bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.35)' },
-  warning: { color: '#f59e0b', bg: 'rgba(245,158,11,0.14)', border: 'rgba(245,158,11,0.38)' },
-  critical: { color: '#ef4444', bg: 'rgba(239,68,68,0.14)', border: 'rgba(239,68,68,0.38)' },
-  offline: { color: 'rgba(255,255,255,0.55)', bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.14)' },
-  active: { color: '#22c55e', bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.35)' },
-  inactive: { color: 'rgba(255,255,255,0.58)', bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.14)' },
-  archived: { color: 'rgba(255,255,255,0.45)', bg: 'rgba(255,255,255,0.04)', border: 'rgba(255,255,255,0.10)' },
+/**
+ * Status badge colors. Each entry is a complete Tailwind class string for
+ * one of the three layers (text, background, border) so the JSX below can
+ * stay declarative. Dot color is reused from the text layer via
+ * `currentColor` so a single token drives both.
+ *
+ *   - `text`   — text + dot color
+ *   - `bg`     — tinted background
+ *   - `border` — pill border
+ */
+const STATUS_STYLES = {
+  healthy:   'text-success  bg-success/10  border-success/30',
+  warning:   'text-warning  bg-warning/10  border-warning/30',
+  critical:  'text-error    bg-error/10    border-error/30',
+  offline:   'text-ink-muted bg-white/5   border-white/10',
+  muted:     'text-ink-muted bg-white/5   border-white/10',
+  active:    'text-success  bg-success/10  border-success/30',
+  inactive:  'text-ink-secondary bg-white/5 border-white/10',
+  archived:  'text-ink-muted bg-white/5   border-white/5',
 };
 
-export default function StatusBadge({ status, label }) {
+const DEFAULT_STYLE = 'text-ink-muted bg-white/5 border-white/10';
+
+/**
+ * Compact pill that displays a hive/device status with a small color dot.
+ * Renders the status key in title-case by default; pass `label` to override.
+ *
+ * Pass `tone` to force a visual style (e.g. "muted" when the parent page
+ * is already communicating the status elsewhere and we just want a quiet
+ * pill). When `tone` is set, the status is used only for the label.
+ */
+export default function StatusBadge({ status, label, tone }) {
   const key = String(status || 'offline').toLowerCase();
-  const s = STATUS_COLORS[key] || STATUS_COLORS.offline;
+  const toneKey = tone ? String(tone).toLowerCase() : null;
+  const styleClass = (toneKey && STATUS_STYLES[toneKey]) || STATUS_STYLES[key] || DEFAULT_STYLE;
 
   return (
     <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '6px',
-        padding: '4px 9px',
-        borderRadius: '999px',
-        border: `1px solid ${s.border}`,
-        background: s.bg,
-        color: s.color,
-        fontSize: '11px',
-        fontWeight: 800,
-        letterSpacing: '0.04em',
-        textTransform: 'uppercase',
-        whiteSpace: 'nowrap',
-      }}
+      className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill border px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-[0.04em] ${styleClass}`}
     >
       <span
         aria-hidden="true"
-        style={{
-          width: '6px',
-          height: '6px',
-          borderRadius: '50%',
-          background: s.color,
-          flexShrink: 0,
-        }}
+        className="h-2 w-2 shrink-0 rounded-full bg-current"
       />
       {label || titleCase(key)}
     </span>

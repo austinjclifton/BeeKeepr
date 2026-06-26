@@ -26,6 +26,12 @@ function subtractUtcMonths(date, months) {
   return value;
 }
 
+function subtractUtcDays(date, days) {
+  const value = new Date(date);
+  value.setUTCDate(value.getUTCDate() - days);
+  return value;
+}
+
 function buildExternalCondition(location, bucketAtDate) {
   const local = getLocalTimeParts(bucketAtDate, location.timeZone);
   const climate = location.climate;
@@ -381,6 +387,7 @@ module.exports = {
   buildExternalCondition,
   buildReadingInput,
   floorToInterval,
+  subtractUtcDays,
   subtractUtcMonths,
   toIntervalMs,
 };

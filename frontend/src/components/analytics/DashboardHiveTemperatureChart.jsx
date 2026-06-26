@@ -2,30 +2,20 @@ import { LineChart } from '@mui/x-charts/LineChart';
 import { EmptyState, LoadingState } from './StateBlocks';
 import {
   EXTERNAL_TEMPERATURE_COLOR,
+  formatChartTemperature,
   formatChartTime,
   formatChartTooltipTime,
   paddedTemperatureDomain,
+  parseTimelineDate,
 } from '../../utils/analyticsFormat';
-import { sortPointsByBucketAt } from '../../utils/chartSeries';
-
-const chartSx = {
-  '& .MuiChartsAxis-line, & .MuiChartsAxis-tick': { stroke: 'rgba(255,255,255,0.18)' },
-  '& .MuiChartsAxis-tickLabel': { fill: 'rgba(255,255,255,0.58)', fontSize: 11 },
-  '& .MuiChartsLegend-label': { fill: 'rgba(255,255,255,0.72)' },
-  '& .MuiChartsGrid-line': { stroke: 'rgba(255,255,255,0.08)' },
-  '& .MuiChartsTooltip-paper': {
-    backgroundColor: '#151515',
-    border: '1px solid #2A2A2A',
-    color: '#fff',
-  },
-  '& .MuiChartsAxisHighlight-root': { stroke: 'rgba(245,185,66,0.38)' },
-};
+import { chartSx } from '../../utils/chartStyles';
+import { nullableNumber, sortPointsByBucketAt } from '../../utils/chartSeries';
 
 export default function DashboardHiveTemperatureChart({
   timeline,
   hiveName,
   loading = false,
-  height = 300,
+  height = 280,
 }) {
   if (loading) return <LoadingState label="Loading selected hive telemetry…" />;
 
@@ -51,77 +41,67 @@ export default function DashboardHiveTemperatureChart({
   const [yMin, yMax] = paddedTemperatureDomain([...internal, ...outside]);
 
   return (
-    <>
+    <div className="-mt-1">
       <LineChart
         height={height}
         skipAnimation
-        margin={{ left: 52, right: 18, top: 24, bottom: 50 }}
+        margin={{ left: 48, right: 12, top: 8, bottom: 36 }}
         xAxis={[{
           data: timestamps,
           scaleType: 'time',
           min: domainStart ?? undefined,
           max: domainEnd ?? undefined,
-          label: 'Bucket time',
           valueFormatter: (value, context) =>
             context.location === 'tick'
               ? formatChartTime(value, '1d')
               : formatChartTooltipTime(value),
           tickLabelInterval: (_, index) => index % tickEvery === 0,
           tickLabelStyle: { fill: 'rgba(255,255,255,0.58)', fontSize: 11 },
-          labelStyle: { fill: 'rgba(255,255,255,0.5)', fontSize: 11 },
         }]}
         yAxis={[{
-          label: 'Temperature (°F)',
           min: yMin,
           max: yMax,
           valueFormatter: value => `${value}°F`,
           tickLabelStyle: { fill: 'rgba(255,255,255,0.58)', fontSize: 11 },
-          labelStyle: { fill: 'rgba(255,255,255,0.5)', fontSize: 11 },
         }]}
         series={[
           {
             data: internal,
-            label: `Internal`,
+            label: 'Internal',
             color: '#F5B942',
             showMark: false,
             curve: 'monotoneX',
-            valueFormatter: formatFahrenheit,
+            valueFormatter: formatChartTemperature,
           },
           {
             data: outside,
-            label: `External`,
+            label: 'External',
             color: EXTERNAL_TEMPERATURE_COLOR,
             showMark: false,
             curve: 'monotoneX',
-            valueFormatter: formatFahrenheit,
+            valueFormatter: formatChartTemperature,
           },
         ]}
-        grid={{ horizontal: true, vertical: true }}
+        // Hide the built-in legend; SelectedHiveSection renders its
+        // own compact legend in the chart header so it sits next to the
+        // title instead of floating at the bottom of the card.
+        hideLegend
+        grid={{ horizontal: true, vertical: false }}
         axisHighlight={{ x: 'line' }}
-        slotProps={{ tooltip: { trigger: 'axis', anchor: 'pointer' } }}
+        slotProps={{
+          tooltip: { trigger: 'axis', anchor: 'pointer' },
+        }}
         sx={chartSx}
       />
-      <div className="chart-meta">
-        Showing raw 10-minute buckets for the selected hive over the previous 24 hours.
-        {!hasInternal ? ' Internal hive readings are unavailable for this window.' : ''}
-        {!hasExternal ? ' Outside conditions are unavailable for this hive location.' : ''}
-      </div>
-    </>
+      {!hasInternal ? (
+        <div className="mt-1.5 text-[11px] text-ink-muted">
+          Internal hive readings are unavailable for this window.
+        </div>
+      ) : !hasExternal ? (
+        <div className="mt-1.5 text-[11px] text-ink-muted">
+          Outside conditions are unavailable for this hive location.
+        </div>
+      ) : null}
+    </div>
   );
-}
-
-function nullableNumber(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
-function formatFahrenheit(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? `${n.toFixed(1)}°F` : 'No data';
-}
-
-function parseTimelineDate(value) {
-  if (!value) return null;
-  const parsed = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }

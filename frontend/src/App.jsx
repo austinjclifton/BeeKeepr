@@ -16,30 +16,33 @@ const Alerts = lazy(() => import('./pages/Alerts'));
 const Settings = lazy(() => import('./pages/Settings'));
 
 function RouteLoading({ withNav = false }) {
-  const content = (
-    <main className={withNav ? 'page-main' : undefined} style={withNav ? undefined : {
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'var(--bg)',
-    }}>
-      <div className={withNav ? 'page-content' : undefined}>
-        <div className="analytics-card state-block" style={{ minHeight: withNav ? '240px' : '180px' }}>
-          <div className="state-pulse" />
-          <div style={{ color: 'var(--text-secondary)', fontSize: '14px', fontWeight: 800 }}>
-            Loading BeeKeepr…
+  if (!withNav) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-bg">
+        <div className="w-full max-w-content px-7">
+          <div className="flex min-h-[180px] flex-col items-center justify-center gap-2.5 rounded-lg border border-line bg-surface-elevated p-6 text-center text-sm text-ink-secondary shadow-card-sm">
+            <div className="h-2.5 w-2.5 animate-pulse rounded-full bg-amber" />
+            <div className="text-[14px] font-extrabold text-ink-secondary">
+              Loading BeeKeepr…
+            </div>
           </div>
         </div>
-      </div>
-    </main>
-  );
-
-  if (!withNav) return content;
+      </main>
+    );
+  }
   return (
-    <div className="app-shell">
+    <div className="app-shell flex min-h-screen">
       <Navigation />
-      {content}
+      <main className="flex-1 min-w-0 overflow-auto">
+        <div className="mx-auto w-full max-w-content px-7 py-7">
+          <div className="flex min-h-[240px] flex-col items-center justify-center gap-2.5 rounded-lg border border-line bg-surface-elevated p-6 text-center text-sm text-ink-secondary shadow-card-sm">
+            <div className="h-2.5 w-2.5 animate-pulse rounded-full bg-amber" />
+            <div className="text-[14px] font-extrabold text-ink-secondary">
+              Loading BeeKeepr…
+            </div>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

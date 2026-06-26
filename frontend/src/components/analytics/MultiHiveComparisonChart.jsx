@@ -15,36 +15,45 @@ import {
   EXTERNAL_TEMPERATURE_COLOR,
   formatAggregationInterval,
   formatBucketRange,
+  formatChartTemperature,
   formatChartTime,
   formatChartTooltipTime,
   paddedTemperatureDomain,
+  parseTimelineDate,
 } from '../../utils/analyticsFormat';
-import { parseChartTime, smoothSeries, sortPointsByBucketAt } from '../../utils/chartSeries';
-
-const COLORS = ['#F5B942', '#22C55E', '#60A5FA', '#FB7185', '#A78BFA', '#2DD4BF', '#F97316', '#E879F9', '#84CC16', '#F43F5E'];
-
-const chartSx = {
-  '& .MuiChartsAxis-line, & .MuiChartsAxis-tick': { stroke: 'rgba(255,255,255,0.18)' },
-  '& .MuiChartsAxis-tickLabel': { fill: 'rgba(255,255,255,0.58)', fontSize: 11 },
-  '& .MuiChartsLegend-label': { fill: 'rgba(255,255,255,0.72)' },
-  '& .MuiChartsGrid-line': { stroke: 'rgba(255,255,255,0.08)' },
-  '& .MuiLineElement-root': { strokeLinecap: 'round', strokeLinejoin: 'round' },
-  '& .MuiChartsTooltip-paper': {
-    backgroundColor: '#151515',
-    border: '1px solid #2A2A2A',
-    color: '#fff',
-  },
-  '& .MuiChartsAxisHighlight-root': { stroke: 'rgba(245,185,66,0.38)' },
-};
+import {
+  comparisonChartSx,
+  getFleetHiveColor,
+} from '../../utils/chartStyles';
+import { nullableNumber, parseChartTime, smoothSeries, sortPointsByBucketAt } from '../../utils/chartSeries';
 
 export default function MultiHiveComparisonChart({
   comparison,
   range,
   loading = false,
-  height = 340,
+  // Dashboard fleet overview wants a compact chart so the bottom half
+  // doesn't dwarf the selected-hive area above. The Analytics page
+  // overrides this with `height={400}` — see Analytics.jsx.
+  height = 300,
   showBucketRangeInTooltip = true,
+  showFooter = true,
   smoothFleetDisplay = false,
   smoothComparisonDisplay = false,
+  // The dashboard section renders its own header legend in the card
+  // chrome (so the hive color pills sit to the right of the title
+  // instead of floating at the top of the chart area). Pass
+  // `hideLegend` to suppress the built-in MUI legend there. Defaults
+  // to `false` so the Analytics page — which still uses the built-in
+  // legend — is unchanged.
+  hideLegend = false,
+  // Tooltip precision overrides for the two temperature kinds. The
+  // dashboard fleet chart passes `internalPrecision={2}` and
+  // `externalPrecision={1}` so the bottom-dashboard readouts stay
+  // consistent with the Fleet Status table; other callers (Analytics)
+  // leave them as `'auto'` and keep the existing trim-trailing-zeros
+  // behavior.
+  internalPrecision = 'auto',
+  externalPrecision = 'auto',
 }) {
   if (loading) return <LoadingState label="Loading comparison…" />;
 
@@ -127,7 +136,7 @@ export default function MultiHiveComparisonChart({
     return {
       data,
       label: hive.name || `Hive ${hive.hiveId}`,
-      color: COLORS[index % COLORS.length],
+      color: getFleetHiveColor(index),
       showMark: showMarks,
       curve: 'monotoneX',
       valueFormatter: (value, context) => formatFahrenheitWithBucket(
@@ -138,6 +147,7 @@ export default function MultiHiveComparisonChart({
         showBucketRangeInTooltip,
         useDisplaySmoothing ? rawData : null,
         displayReferenceLabel,
+        internalPrecision,
       ),
     };
   });
@@ -167,6 +177,7 @@ export default function MultiHiveComparisonChart({
         showBucketRangeInTooltip,
         useComparisonSmoothing ? data : null,
         displayReferenceLabel,
+        externalPrecision,
       ),
     });
   }
@@ -177,7 +188,11 @@ export default function MultiHiveComparisonChart({
       <LineChart
         height={height}
         skipAnimation
-        margin={{ left: 52, right: 20, top: 24, bottom: 58 }}
+        // `bottom: 36` matches the selected-hive chart's x-axis label
+        // margin. 58px (the old value) left a generous band of empty
+        // space below the labels inside the chart canvas; 36px is
+        // enough for 12px tick labels + a small descender buffer.
+        margin={{ left: 52, right: 20, top: 24, bottom: 36 }}
         xAxis={[{
           data: timestamps,
           scaleType: 'time',
@@ -189,34 +204,37 @@ export default function MultiHiveComparisonChart({
               ? formatChartTime(value, range)
               : formatChartTooltipTime(value),
           tickLabelInterval: (_, index) => index % tickEvery === 0,
-          tickLabelStyle: { fill: 'rgba(255,255,255,0.58)', fontSize: 11 },
-          labelStyle: { fill: 'rgba(255,255,255,0.5)', fontSize: 11 },
+          tickLabelStyle: { fill: 'rgba(255,255,255,0.62)', fontSize: 12 },
+          labelStyle: { fill: 'rgba(255,255,255,0.55)', fontSize: 12 },
         }]}
         yAxis={[{
           label: 'Avg temperature (°F)',
           min: yMin,
           max: yMax,
           valueFormatter: value => `${value}°F`,
-          tickLabelStyle: { fill: 'rgba(255,255,255,0.58)', fontSize: 11 },
-          labelStyle: { fill: 'rgba(255,255,255,0.5)', fontSize: 11 },
+          tickLabelStyle: { fill: 'rgba(255,255,255,0.62)', fontSize: 12 },
+          labelStyle: { fill: 'rgba(255,255,255,0.55)', fontSize: 12 },
         }]}
         series={series}
         grid={{ horizontal: true, vertical: true }}
         axisHighlight={{ x: 'line' }}
+        hideLegend={hideLegend}
         slots={{ tooltip: SortedAxisTooltip }}
         slotProps={{
           tooltip: { trigger: 'axis', anchor: 'pointer' },
           line: { strokeLinecap: 'round', strokeLinejoin: 'round' },
         }}
-        sx={chartSx}
+        sx={comparisonChartSx}
       />
-      <div className="chart-meta">
-        Source readings are stored in 10-minute ingest buckets.
-        {useDashboardFleetSmoothing ? ' Fleet overview lines use 10-minute display buckets with a 9-point trend average; bucket averages remain available in tooltips when they differ.' : ''}
-        {useComparisonSmoothing ? ' Multi-hive comparison lines are display-smoothed for the selected interval; bucket averages remain available in tooltips when they differ.' : ''}
-        {comparison?.locationId ? ' External temperature for the selected location is overlaid when weather data is available.' : ''}
-        {comparison?.locationId && !hasExternalSeries ? ' Outside conditions are unavailable for this location.' : ''}
-      </div>
+      {showFooter && (
+        <div className="-mt-1.5 text-[12px] leading-snug text-ink-muted">
+          Source readings are stored in 10-minute ingest buckets.
+          {useDashboardFleetSmoothing ? ' Fleet overview lines use 10-minute display buckets with a 9-point trend average; bucket averages remain available in tooltips when they differ.' : ''}
+          {useComparisonSmoothing ? ' Multi-hive comparison lines are display-smoothed for the selected interval; bucket averages remain available in tooltips when they differ.' : ''}
+          {comparison?.locationId ? ' External temperature for the selected location is overlaid when weather data is available.' : ''}
+          {comparison?.locationId && !hasExternalSeries ? ' Outside conditions are unavailable for this location.' : ''}
+        </div>
+      )}
     </>
   );
 }
@@ -269,11 +287,6 @@ function SortedAxisTooltipContent() {
       ))}
     </ChartsTooltipPaper>
   );
-}
-
-function nullableNumber(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
 }
 
 function parseBucketTime(value, bucketSize) {
@@ -406,11 +419,6 @@ function sortableTemperature(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-function formatFahrenheit(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? `${n.toFixed(1)}°F` : 'No data';
-}
-
 function formatFahrenheitWithBucket(
   value,
   context,
@@ -419,9 +427,10 @@ function formatFahrenheitWithBucket(
   showBucketRangeInTooltip,
   rawData,
   rawLabel,
+  precision = 'auto',
 ) {
   const rawValue = rawData?.[context?.dataIndex];
-  const base = formatFahrenheitWithRaw(value, rawValue, rawLabel);
+  const base = formatFahrenheitWithRaw(value, rawValue, rawLabel, precision);
   if (!showBucketRangeInTooltip) return base;
   const bucketAt = bucketTimes?.[context?.dataIndex];
   if (!bucketAt) return base;
@@ -429,12 +438,12 @@ function formatFahrenheitWithBucket(
   return `${base} · ${formatBucketRange(bucketAt, endAt, bucketSize)}`;
 }
 
-function formatFahrenheitWithRaw(value, rawValue, rawLabel = 'raw') {
-  const base = formatFahrenheit(value);
+function formatFahrenheitWithRaw(value, rawValue, rawLabel = 'raw', precision = 'auto') {
+  const base = formatChartTemperature(value, precision);
   const display = sortableTemperature(value);
   const raw = sortableTemperature(rawValue);
   if (display == null || raw == null || Math.abs(display - raw) < 0.05) return base;
-  return `${base} trend · ${rawLabel} ${formatFahrenheit(raw)}`;
+  return `${base} trend · ${rawLabel} ${formatChartTemperature(raw, precision)}`;
 }
 
 function addBucketEnd(bucketAt, bucketSize) {
@@ -449,10 +458,4 @@ function addBucketEnd(bucketAt, bucketSize) {
   };
   const ms = durations[bucketSize];
   return ms ? new Date(d.getTime() + ms).toISOString() : null;
-}
-
-function parseTimelineDate(value) {
-  if (!value) return null;
-  const parsed = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }

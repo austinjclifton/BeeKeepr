@@ -10,7 +10,10 @@
  * that config.
  *
  * Useful flags (passed through to demoData.service.runDemoBackfill):
- *   --months=18                Backfill window length in months.
+ *   --days=30                  Backfill window length in days. Takes
+ *                              precedence over --months if both are set.
+ *   --months=18                Backfill window length in months. Used
+ *                              only when --days is not provided.
  *   --intervalMinutes=10       Bucket size in minutes.
  *   --withAlerts               Also create alert rows from readings
  *                              that cross the configured thresholds.
@@ -51,6 +54,8 @@ function parseArgs(args) {
       parsed.start = value;
     } else if (name === "end") {
       parsed.end = value;
+    } else if (name === "days") {
+      parsed.days = toNumber(value, name);
     } else if (name === "months") {
       parsed.months = toNumber(value, name);
     } else if (name === "intervalMinutes") {

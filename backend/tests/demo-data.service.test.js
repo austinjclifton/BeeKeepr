@@ -33,6 +33,10 @@ const devicesServiceModulePath = path.join(
     backendRoot,
     "src/services/devices.service.js",
 );
+const externalConditionsServiceModulePath = path.join(
+    backendRoot,
+    "src/services/externalConditions.service.js",
+);
 
 function clearRequireCache() {
     delete require.cache[serviceModulePath];
@@ -44,6 +48,7 @@ function clearRequireCache() {
     delete require.cache[locationsServiceModulePath];
     delete require.cache[hivesServiceModulePath];
     delete require.cache[devicesServiceModulePath];
+    delete require.cache[externalConditionsServiceModulePath];
 }
 
 function loadDemoDataService(stubs) {
@@ -96,6 +101,12 @@ function loadDemoDataService(stubs) {
         filename: devicesServiceModulePath,
         loaded: true,
         exports: stubs.devicesService,
+    };
+    require.cache[externalConditionsServiceModulePath] = {
+        id: externalConditionsServiceModulePath,
+        filename: externalConditionsServiceModulePath,
+        loaded: true,
+        exports: stubs.externalConditionsService,
     };
 
     return require(serviceModulePath);
@@ -252,6 +263,9 @@ function buildDemoStubs() {
                 return { id: deviceId, last_seen_at: seenAt };
             },
         },
+        externalConditionsService: {
+            fetchCurrentForLocation: async () => null,
+        },
     };
 
     return { stubs, state };
@@ -272,7 +286,7 @@ test("ensureDemoSeed creates the expected demo topology", async () => {
     assert.equal(state.createdDevices.length, 5);
     assert.deepEqual(
         result.hives.map((hive) => hive.locationKey),
-        ["app", "app", "wny", "wny", "wny"],
+        ["app", "app", "roc", "roc", "roc"],
     );
 });
 
@@ -283,7 +297,7 @@ test("ensureDemoSeed prunes stale demo hives before rebuilding the configured to
     let existingHives = [
         {
             id: 41,
-            name: "Blue Ridge Stable Hive",
+            name: "Biltmore Estate Hive",
             location_id: 8,
         },
     ];
@@ -302,7 +316,7 @@ test("ensureDemoSeed prunes stale demo hives before rebuilding the configured to
                 locations: 1,
             },
             staleHives: [
-                { hiveId: 41, name: "Blue Ridge Stable Hive", locationId: 8 },
+                { hiveId: 41, name: "Biltmore Estate Hive", locationId: 8 },
             ],
             deletedLocations: [
                 { locationId: 8, name: "Blue Ridge Appalachia Demo Yard" },
@@ -316,11 +330,11 @@ test("ensureDemoSeed prunes stale demo hives before rebuilding the configured to
 
     assert.equal(state.pruneCalls.length, 1);
     assert.deepEqual(state.pruneCalls[0].configuredHiveNames, [
-        "Blue Ridge Stable Hive",
-        "Pisgah Orchard Hive",
-        "Lake Erie Stable Hive",
-        "Niagara Snowbelt Hive",
-        "Finger Lakes Variable Hive",
+        "Biltmore Estate Hive",
+        "Mount Pisgah Hive",
+        "Lake Ontario Hive",
+        "Highland Park Hive",
+        "Erie Canal Hive",
     ]);
     assert.equal(result.hives.length, 5);
     assert.equal(result.hives.some((hive) => hive.name === "Yolo Stable Hive"), false);
@@ -344,9 +358,46 @@ test("runDemoTick upserts the configured demo locations and inserts one current 
     assert.equal(state.alerts.length, 0);
 
     const locationKeys = state.externalUpserts.map((entry) => entry.locationKey).sort();
-    assert.deepEqual(locationKeys, ["app", "wny"]);
+    assert.deepEqual(locationKeys, ["app", "roc"]);
     assert.ok(state.readingInserts.every((entry) => entry.temperature >= 92));
     assert.ok(state.readingInserts.every((entry) => entry.temperature <= 98));
+});
+
+test("runDemoTick writes the external condition via the real-weather service when it returns a successful row", async () => {
+    const { stubs, state } = buildDemoStubs();
+    stubs.externalConditionsService.fetchCurrentForLocation = async () => ({
+        id: 999,
+        location_id: 1,
+        bucket_at: "2026-05-11T16:20:00.000Z",
+        provider: "openweather",
+        status: "success",
+        temperature: 73.4,
+        humidity_pct: 55.2,
+        precip_mm: null,
+        wind_mps: 2.1,
+        wind_gust_mps: 3.4,
+        pressure_hpa: 1012.0,
+        cloud_pct: 40.0,
+        raw_json: { source: "openweather" },
+    });
+
+    const demoDataService = loadDemoDataService(stubs);
+    const result = await demoDataService.runDemoTick({
+        now: new Date("2026-05-11T16:24:00.000Z"),
+    });
+
+    assert.equal(result.externalConditionsInserted, 2);
+    // Real weather writes via the service, so the batch upsert list is empty.
+    assert.equal(state.externalUpserts.length, 0);
+    // The internal reading is still built from the real external condition
+    // (the service stub returned a constant 73.4F).
+    assert.equal(state.readingInserts.length, 5);
+    for (const reading of state.readingInserts) {
+        assert.ok(
+            reading.temperature >= 92 && reading.temperature <= 98,
+            `internal temp should stay in brood range even with real weather: got ${reading.temperature}`,
+        );
+    }
 });
 
 test("runDemoBackfill generates a bounded historical range without alerts by default", async () => {
@@ -382,7 +433,7 @@ test("runDemoBackfill keeps deterministic smooth temperature progression with ce
     });
 
     const series = state.readingInserts
-        .filter((entry) => entry.hiveKey === "wny-01")
+        .filter((entry) => entry.hiveKey === "roc-01")
         .map((entry) => entry.temperature);
 
     assert.ok(series.length > 10);
@@ -427,8 +478,8 @@ test("pruneStaleDemoData passes the five-hive config into the scoped prune opera
                 locations: 1,
             },
             staleHives: [
-                { hiveId: 21, name: "Blue Ridge Stable Hive", locationId: 31 },
-                { hiveId: 22, name: "Pisgah Orchard Hive", locationId: 31 },
+                { hiveId: 21, name: "Biltmore Estate Hive", locationId: 31 },
+                { hiveId: 22, name: "Mount Pisgah Hive", locationId: 31 },
             ],
             deletedLocations: [
                 { locationId: 31, name: "Blue Ridge Appalachia Demo Yard" },
@@ -448,23 +499,23 @@ test("pruneStaleDemoData passes the five-hive config into the scoped prune opera
     assert.deepEqual(
         state.pruneCalls[0].configuredHiveNames,
         [
-            "Blue Ridge Stable Hive",
-            "Pisgah Orchard Hive",
-            "Lake Erie Stable Hive",
-            "Niagara Snowbelt Hive",
-            "Finger Lakes Variable Hive",
+            "Biltmore Estate Hive",
+            "Mount Pisgah Hive",
+            "Lake Ontario Hive",
+            "Highland Park Hive",
+            "Erie Canal Hive",
         ],
     );
     assert.deepEqual(
         state.pruneCalls[0].configuredLocations.map((location) => location.key),
-        ["app", "wny"],
+        ["app", "roc"],
     );
     assert.equal(result.beekeeper.username, "demo");
     assert.equal(result.deleted.hives, 2);
     assert.equal(result.deleted.locations, 1);
     assert.deepEqual(
         result.staleHives.map((hive) => hive.name),
-        ["Blue Ridge Stable Hive", "Pisgah Orchard Hive"],
+        ["Biltmore Estate Hive", "Mount Pisgah Hive"],
     );
 });
 
@@ -483,7 +534,7 @@ test("resetDemoRuntimeData passes the configured demo yards into the runtime res
             },
             resetLocations: [
                 { locationId: 1, name: "Blue Ridge Appalachia Demo Yard" },
-                { locationId: 2, name: "Western New York Demo Yard" },
+                { locationId: 2, name: "Rochester Demo Yard" },
             ],
             sharedLocationsSkipped: [],
         };
@@ -498,7 +549,7 @@ test("resetDemoRuntimeData passes the configured demo yards into the runtime res
     assert.equal(state.resetCalls[0].provider, "demo-simulator");
     assert.deepEqual(
         state.resetCalls[0].configuredLocations.map((location) => location.key),
-        ["app", "wny"],
+        ["app", "roc"],
     );
     assert.equal(result.deleted.readings, 5);
     assert.equal(result.deleted.externalConditions, 4);

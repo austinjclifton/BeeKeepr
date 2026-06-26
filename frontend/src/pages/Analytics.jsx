@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import HamburgerBtn from '../components/HamburgerBtn';
 import Navigation from '../components/Navigation';
 import DashboardSection from '../components/analytics/DashboardSection';
 import HiveSelector from '../components/analytics/HiveSelector';
@@ -20,7 +21,6 @@ import {
   formatAggregationInterval,
   formatCount,
   formatDateTime,
-  formatMetric,
   formatTemperature,
   getHiveId,
 } from '../utils/analyticsFormat';
@@ -41,26 +41,8 @@ const EXPORT_INCLUDE_OPTIONS = [
   { key: 'includeHiveDevice', label: 'Hive/device metadata' },
   { key: 'includeAlerts', label: 'Alert data' },
 ];
-
 const MultiHiveComparisonChart = lazy(() => import('../components/analytics/MultiHiveComparisonChart'));
 const TemperatureChart = lazy(() => import('../components/analytics/TemperatureChart'));
-
-function HamburgerBtn() {
-  return (
-    <button
-      className="mobile-menu-btn"
-      type="button"
-      onClick={() => window.dispatchEvent(new Event('openMobileNav'))}
-      aria-label="Open navigation"
-    >
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-        <line x1="3" y1="6" x2="21" y2="6" />
-        <line x1="3" y1="12" x2="21" y2="12" />
-        <line x1="3" y1="18" x2="21" y2="18" />
-      </svg>
-    </button>
-  );
-}
 
 function toLocalDateTimeInput(date) {
   const offsetMs = date.getTimezoneOffset() * 60 * 1000;
@@ -143,6 +125,15 @@ function resolveExportWindow(rangeMode, appliedQuery, customStartInput, customEn
   }
   return { start: start.toISOString(), end: end.toISOString() };
 }
+
+// shared select/input classes
+const selectClass = 'w-full rounded-md border border-line bg-white/[0.05] px-3 py-2.5 text-sm text-white outline-none focus:border-amber';
+const inputClass = selectClass;
+const fieldLabelClass = 'mb-2 text-[11px] font-extrabold uppercase tracking-[0.08em] text-ink-muted';
+const rangePillClass = 'rounded-pill border border-amber/28 bg-amber/10 px-3 py-2 text-[12px] font-black uppercase tracking-[0.04em] text-amber whitespace-nowrap';
+const queryControlsClass = 'mt-4 flex flex-wrap items-center gap-3';
+const primaryBtnClass = 'cursor-pointer rounded-pill border-none bg-amber px-3.5 py-2.5 text-[12px] font-black text-navy transition disabled:cursor-not-allowed disabled:opacity-55';
+const ghostBtnClass = 'cursor-pointer rounded-pill border border-line bg-white/[0.05] px-3 py-2 text-[12px] font-extrabold text-ink-secondary transition hover:border-amber/45 hover:text-white disabled:cursor-not-allowed disabled:opacity-55';
 
 export default function Analytics() {
   // Query and export state
@@ -391,18 +382,18 @@ export default function Analytics() {
   };
 
   return (
-    <div className="app-shell">
+    <div className="app-shell flex min-h-screen">
       <Navigation />
-      <main className="page-main">
-        <div className="page-content">
-          <header className="page-header analytics-header">
+      <main className="flex-1 min-w-0 overflow-auto">
+        <div className="mx-auto w-full max-w-content px-7 py-7">
+          <header className="mb-6 flex flex-wrap items-start justify-between gap-5">
             <div>
-              <div className="page-title-row">
+              <div className="flex items-center gap-2.5">
                 <HamburgerBtn />
-                <div className="page-kicker">Analytics</div>
+                <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-ink-muted">Analytics</div>
               </div>
-              <h1>Historical Analysis</h1>
-              <p className="page-subtitle">Search specific windows, inspect one hive, and compare colonies over time.</p>
+              <h1 className="text-[clamp(26px,4vw,42px)] font-black leading-none text-white">Historical Analysis</h1>
+              <p className="mt-2 text-[14px] text-ink-secondary">Search specific windows, inspect one hive, and compare colonies over time.</p>
             </div>
             <HiveSelector
               hives={hives}
@@ -418,11 +409,11 @@ export default function Analytics() {
             <>
               {/* Query controls */}
               <DashboardSection title="Query Window" eyebrow="Search">
-                <div className="analytics-card query-panel">
-                  <div className="query-mode-row">
+                <div className="p-[18px]">
+                  <div className="flex flex-wrap items-center gap-3">
                     <button
                       type="button"
-                      className={mode === 'preset' ? 'primary-btn' : 'ghost-btn'}
+                      className={mode === 'preset' ? primaryBtnClass : ghostBtnClass}
                       onClick={() => {
                         setMode('preset');
                         setAppliedQuery(withQueryOptions({ range }, bucket, locationId));
@@ -433,21 +424,21 @@ export default function Analytics() {
                     </button>
                     <button
                       type="button"
-                      className={mode === 'custom' ? 'primary-btn' : 'ghost-btn'}
+                      className={mode === 'custom' ? primaryBtnClass : ghostBtnClass}
                       onClick={() => setMode('custom')}
                     >
                       Custom Dates
                     </button>
-                    <div className="range-context-pill">Active: {queryLabel}</div>
-                    <div className="range-context-pill">Bucket: {bucketContext}</div>
-                    <div className="range-context-pill">Location: {locationContext}</div>
+                    <div className={rangePillClass}>Active: {queryLabel}</div>
+                    <div className={rangePillClass}>Bucket: {bucketContext}</div>
+                    <div className={rangePillClass}>Location: {locationContext}</div>
                   </div>
 
-                  <div className="query-controls">
-                    <label>
-                      <div className="field-label" style={{ marginBottom: '8px' }}>Location</div>
+                  <div className={queryControlsClass}>
+                    <label className="min-w-0 flex-1 basis-[220px]">
+                      <div className={fieldLabelClass}>Location</div>
                       <select
-                        className="dark-select"
+                        className={selectClass}
                         value={locationId}
                         onChange={event => handleLocationChange(event.target.value)}
                         disabled={locationsState.loading}
@@ -460,10 +451,10 @@ export default function Analytics() {
                         ))}
                       </select>
                     </label>
-                    <label>
-                      <div className="field-label" style={{ marginBottom: '8px' }}>Bucket Size</div>
+                    <label className="min-w-0 flex-1 basis-[220px]">
+                      <div className={fieldLabelClass}>Bucket Size</div>
                       <select
-                        className="dark-select"
+                        className={selectClass}
                         value={bucket}
                         onChange={event => handleBucketChange(event.target.value)}
                       >
@@ -472,59 +463,59 @@ export default function Analytics() {
                         ))}
                       </select>
                     </label>
-                    <div style={{ color: 'var(--text-secondary)', fontSize: '13px', flex: '2 1 260px' }}>
+                    <div className="flex-[2_1_260px] text-[13px] text-ink-secondary">
                       Source readings are stored in 10-minute ingest buckets. The backend validates bucket size against the active range.
                     </div>
                   </div>
 
                   {mode === 'preset' ? (
-                    <div className="query-controls">
+                    <div className={queryControlsClass}>
                       <div>
-                        <div className="field-label" style={{ marginBottom: '8px' }}>Preset Range</div>
+                        <div className={fieldLabelClass}>Preset Range</div>
                         <TimeRangeToggle range={range} onChange={handlePresetRange} disabled={status.loading} />
                       </div>
-                      <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                      <div className="text-[13px] text-ink-secondary">
                         Preset ranges run immediately and use backend-owned bucket sizes.
                       </div>
                     </div>
                   ) : (
-                    <div className="query-controls">
-                      <label>
-                        <div className="field-label" style={{ marginBottom: '8px' }}>Start</div>
+                    <div className={queryControlsClass}>
+                      <label className="min-w-0 flex-1 basis-[220px]">
+                        <div className={fieldLabelClass}>Start</div>
                         <input
-                          className="dark-input"
+                          className={inputClass}
                           type="datetime-local"
                           value={startInput}
                           onChange={event => setStartInput(event.target.value)}
                         />
                       </label>
-                      <label>
-                        <div className="field-label" style={{ marginBottom: '8px' }}>End</div>
+                      <label className="min-w-0 flex-1 basis-[220px]">
+                        <div className={fieldLabelClass}>End</div>
                         <input
-                          className="dark-input"
+                          className={inputClass}
                           type="datetime-local"
                           value={endInput}
                           onChange={event => setEndInput(event.target.value)}
                         />
                       </label>
-                      <button type="button" className="primary-btn query-apply-btn" onClick={applyCustomRange}>
+                      <button
+                        type="button"
+                        className={`${primaryBtnClass} self-end min-h-[42px] w-full sm:w-auto`}
+                        onClick={applyCustomRange}
+                      >
                         Apply Date Range
                       </button>
                     </div>
                   )}
 
                   {queryError && (
-                    <div style={{ color: '#fca5a5', fontSize: '13px', marginTop: '12px', fontWeight: 700 }}>
-                      {queryError}
-                    </div>
+                    <div className="mt-3 text-[13px] font-bold text-red-300">{queryError}</div>
                   )}
                   {locationsState.error && (
-                    <div style={{ color: '#fca5a5', fontSize: '13px', marginTop: '12px', fontWeight: 700 }}>
-                      {locationsState.error}
-                    </div>
+                    <div className="mt-3 text-[13px] font-bold text-red-300">{locationsState.error}</div>
                   )}
                   {showRefreshingResults && (
-                    <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '12px', fontWeight: 700 }}>
+                    <div className="mt-3 text-[13px] font-bold text-ink-secondary">
                       Refreshing results while keeping your place
                     </div>
                   )}
@@ -545,7 +536,7 @@ export default function Analytics() {
                     eyebrow="Selected Hive Summary"
                     action={selectedHive && <StatusBadge status={selectedHive.healthStatus} />}
                   >
-                    <div className="stat-grid">
+                    <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
                       <StatCard label="Latest Temp" value={formatTemperature(summary.latestTemperature)} detail={formatDateTime(summary.latestReadingAt)} />
                       <StatCard label="Average Temp" value={formatTemperature(summary.averageTemperature)} detail={`${formatCount(summary.readingCount)} readings`} />
                       <StatCard label="Min Temp" value={formatTemperature(summary.minTemperature)} />
@@ -559,7 +550,7 @@ export default function Analytics() {
 
                   {/* Temperature trend */}
                   <DashboardSection title="Temperature Trend" eyebrow="Single Hive">
-                    <div className="analytics-card chart-card">
+                    <div className="flex min-h-[380px] flex-col p-[18px]">
                       {selectedAnalytics.error ? (
                         <ErrorState message={selectedAnalytics.error} />
                       ) : (
@@ -576,14 +567,14 @@ export default function Analytics() {
 
                   {/* Multi-hive comparison */}
                   <DashboardSection title={selectedLocation ? 'Location Comparison' : 'Comparison Graph'} eyebrow="Multi-Hive">
-                    <div className="analytics-card chart-card">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '14px', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '12px' }}>
-                        <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                    <div className="flex min-h-[380px] flex-col p-[18px]">
+                      <div className="mb-3 flex flex-wrap items-start justify-between gap-3.5">
+                        <div className="text-[13px] text-ink-secondary">
                           {selectedLocation
                             ? `Comparing hives in ${locationDisplayName(selectedLocation)} inside the active query window.`
                             : 'Select hives to compare average temperature inside the active query window.'}
                         </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        <div className="flex flex-wrap gap-2">
                           {hives.map(hive => {
                             const id = getHiveId(hive);
                             const active = compareIds.includes(id);
@@ -591,7 +582,7 @@ export default function Analytics() {
                               <button
                                 key={id}
                                 type="button"
-                                className={active ? 'primary-btn' : 'ghost-btn'}
+                                className={active ? primaryBtnClass : ghostBtnClass}
                                 onClick={() => toggleCompareHive(id)}
                               >
                                 {hive.name || `Hive ${id}`}
@@ -624,18 +615,18 @@ export default function Analytics() {
 
                   {/* CSV export */}
                   <DashboardSection title="Export CSV" eyebrow="Download Data">
-                    <div className="analytics-card query-panel">
-                      <div style={{ display: 'grid', gap: '16px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap' }}>
+                    <div className="p-[18px]">
+                      <div className="grid gap-4">
+                        <div className="flex flex-wrap justify-between gap-3.5">
                           <div>
-                            <div style={{ color: 'var(--text-primary)', fontSize: '15px', fontWeight: 850 }}>Download database data</div>
-                            <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
+                            <div className="text-[15px] font-extrabold text-white">Download database data</div>
+                            <div className="mt-1 text-[13px] text-ink-secondary">
                               Exports are scoped to the current beekeeper and include CSV-safe headers.
                             </div>
                           </div>
                           <button
                             type="button"
-                            className="primary-btn"
+                            className={primaryBtnClass}
                             onClick={handleDownloadCsv}
                             disabled={exportStatus.loading}
                           >
@@ -643,11 +634,11 @@ export default function Analytics() {
                           </button>
                         </div>
 
-                        <div className="query-controls">
-                          <label>
-                            <div className="field-label" style={{ marginBottom: '8px' }}>Scope</div>
+                        <div className={queryControlsClass}>
+                          <label className="min-w-0 flex-1 basis-[220px]">
+                            <div className={fieldLabelClass}>Scope</div>
                             <select
-                              className="dark-select"
+                              className={selectClass}
                               value={exportScope}
                               onChange={event => setExportScope(event.target.value)}
                             >
@@ -658,10 +649,10 @@ export default function Analytics() {
                           </label>
 
                           {exportScope === 'hive' && (
-                            <label>
-                              <div className="field-label" style={{ marginBottom: '8px' }}>Hive</div>
+                            <label className="min-w-0 flex-1 basis-[220px]">
+                              <div className={fieldLabelClass}>Hive</div>
                               <select
-                                className="dark-select"
+                                className={selectClass}
                                 value={exportHiveId || selectedHiveId || ''}
                                 onChange={event => setExportHiveId(event.target.value)}
                               >
@@ -678,10 +669,10 @@ export default function Analytics() {
                           )}
 
                           {exportScope === 'location' && (
-                            <label>
-                              <div className="field-label" style={{ marginBottom: '8px' }}>Location</div>
+                            <label className="min-w-0 flex-1 basis-[220px]">
+                              <div className={fieldLabelClass}>Location</div>
                               <select
-                                className="dark-select"
+                                className={selectClass}
                                 value={exportLocationId || locationId || ''}
                                 onChange={event => setExportLocationId(event.target.value)}
                               >
@@ -695,10 +686,10 @@ export default function Analytics() {
                             </label>
                           )}
 
-                          <label>
-                            <div className="field-label" style={{ marginBottom: '8px' }}>Export Range</div>
+                          <label className="min-w-0 flex-1 basis-[220px]">
+                            <div className={fieldLabelClass}>Export Range</div>
                             <select
-                              className="dark-select"
+                              className={selectClass}
                               value={exportRangeMode}
                               onChange={event => setExportRangeMode(event.target.value)}
                             >
@@ -714,20 +705,20 @@ export default function Analytics() {
                         </div>
 
                         {exportRangeMode === 'custom' && (
-                          <div className="query-controls">
-                            <label>
-                              <div className="field-label" style={{ marginBottom: '8px' }}>Export Start</div>
+                          <div className={queryControlsClass}>
+                            <label className="min-w-0 flex-1 basis-[220px]">
+                              <div className={fieldLabelClass}>Export Start</div>
                               <input
-                                className="dark-input"
+                                className={inputClass}
                                 type="datetime-local"
                                 value={exportStartInput}
                                 onChange={event => setExportStartInput(event.target.value)}
                               />
                             </label>
-                            <label>
-                              <div className="field-label" style={{ marginBottom: '8px' }}>Export End</div>
+                            <label className="min-w-0 flex-1 basis-[220px]">
+                              <div className={fieldLabelClass}>Export End</div>
                               <input
-                                className="dark-input"
+                                className={inputClass}
                                 type="datetime-local"
                                 value={exportEndInput}
                                 onChange={event => setExportEndInput(event.target.value)}
@@ -737,19 +728,18 @@ export default function Analytics() {
                         )}
 
                         <div>
-                          <div className="field-label" style={{ marginBottom: '8px' }}>Included Data</div>
-                          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                          <div className={fieldLabelClass}>Included Data</div>
+                          <div className="flex flex-wrap gap-2.5">
                             {EXPORT_INCLUDE_OPTIONS.map(option => (
                               <label
                                 key={option.key}
-                                className="ghost-btn"
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
+                                className="inline-flex cursor-pointer items-center gap-2 rounded-pill border border-line bg-white/[0.05] px-3 py-2 text-[12px] font-extrabold text-ink-secondary"
                               >
                                 <input
                                   type="checkbox"
                                   checked={exportIncludes[option.key]}
                                   onChange={() => handleExportIncludeChange(option.key)}
-                                  style={{ accentColor: 'var(--amber)' }}
+                                  style={{ accentColor: '#f5b942' }}
                                 />
                                 {option.label}
                               </label>
@@ -757,18 +747,18 @@ export default function Analytics() {
                           </div>
                         </div>
 
-                        <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                        <div className="text-[13px] text-ink-secondary">
                           This download will include {EXPORT_INCLUDE_OPTIONS.filter(option => exportIncludes[option.key]).map(option => option.label.toLowerCase()).join(', ') || 'no datasets selected'} for {exportScope === 'user' ? 'all owned hives' : exportScope === 'hive' ? 'the selected hive' : 'the selected location'}.
                           {exportRangeMode === 'all' ? ' All matching historical rows will be exported.' : ` Range: ${exportRangeMode === 'active' ? queryLabel : exportRangeMode === 'custom' ? 'custom export dates' : describeQuery({ range: exportRangeMode })}.`}
                         </div>
 
                         {exportStatus.error && (
-                          <div style={{ color: '#fca5a5', fontSize: '13px', fontWeight: 700 }}>
+                          <div className="text-[13px] font-bold text-red-300">
                             {exportStatus.error}
                           </div>
                         )}
                         {exportStatus.success && (
-                          <div style={{ color: 'var(--success)', fontSize: '13px', fontWeight: 800 }}>
+                          <div className="text-[13px] font-extrabold text-success">
                             {exportStatus.success}
                           </div>
                         )}
@@ -778,41 +768,48 @@ export default function Analytics() {
 
                   {/* Hive metrics */}
                   <DashboardSection title="Hive Metrics" eyebrow="Query Summary">
-                    <div className="analytics-card" style={{ overflowX: 'auto' }}>
-                      <table className="metrics-table">
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[720px] border-collapse text-left text-[13px] text-ink-secondary">
                         <thead>
                           <tr>
-                            <th>Hive</th>
-                            <th>Health</th>
-                            <th>Latest</th>
-                            <th>Average</th>
-                            <th>Min</th>
-                            <th>Max</th>
-                            <th>Temperature Swing</th>
-                            <th>Readings</th>
-                            <th>Warnings</th>
-                            <th>Critical</th>
+                            {[
+                              'Hive', 'Health', 'Latest', 'Average', 'Min', 'Max',
+                              'Temperature Swing', 'Readings', 'Warnings', 'Critical',
+                            ].map(label => (
+                              <th
+                                key={label}
+                                className="border-b border-line px-3.5 py-3 text-[10px] font-extrabold uppercase tracking-[0.08em] text-ink-muted"
+                              >
+                                {label}
+                              </th>
+                            ))}
                           </tr>
                         </thead>
                         <tbody>
                           {hives.map(hive => {
                             const id = getHiveId(hive);
                             return (
-                              <tr key={id}>
-                                <td style={{ color: 'var(--text-primary)', fontWeight: 850 }}>
+                              <tr key={id} className="border-b border-line/70 last:border-b-0">
+                                <td className="px-3.5 py-3 font-extrabold text-white">
                                   {hive.name || `Hive ${id}`}
                                 </td>
-                                <td><StatusBadge status={hive.healthStatus} /></td>
-                                <td>{formatTemperature(hive.latestTemperature)}</td>
-                                <td>{formatTemperature(hive.averageTemperature)}</td>
-                                <td>{formatTemperature(hive.minTemperature)}</td>
-                                <td>{formatTemperature(hive.maxTemperature)}</td>
-                                <td>{formatMetric(hive.temperatureSwing)}°F</td>
-                                <td>{formatCount(hive.readingCount)}</td>
-                                <td style={{ color: hive.warningCount > 0 ? 'var(--warning)' : 'var(--text-muted)', fontWeight: 800 }}>
+                                <td className="px-3.5 py-3"><StatusBadge status={hive.healthStatus} /></td>
+                                <td className="px-3.5 py-3">{formatTemperature(hive.latestTemperature)}</td>
+                                <td className="px-3.5 py-3">{formatTemperature(hive.averageTemperature)}</td>
+                                <td className="px-3.5 py-3">{formatTemperature(hive.minTemperature)}</td>
+                                <td className="px-3.5 py-3">{formatTemperature(hive.maxTemperature)}</td>
+                                <td className="px-3.5 py-3">{formatTemperature(hive.temperatureSwing)}</td>
+                                <td className="px-3.5 py-3">{formatCount(hive.readingCount)}</td>
+                                <td
+                                  className="px-3.5 py-3 font-extrabold"
+                                  style={{ color: hive.warningCount > 0 ? '#f59e0b' : 'rgba(255,255,255,0.45)' }}
+                                >
                                   {formatCount(hive.warningCount)}
                                 </td>
-                                <td style={{ color: hive.criticalCount > 0 ? 'var(--error)' : 'var(--text-muted)', fontWeight: 800 }}>
+                                <td
+                                  className="px-3.5 py-3 font-extrabold"
+                                  style={{ color: hive.criticalCount > 0 ? '#ef4444' : 'rgba(255,255,255,0.45)' }}
+                                >
                                   {formatCount(hive.criticalCount)}
                                 </td>
                               </tr>

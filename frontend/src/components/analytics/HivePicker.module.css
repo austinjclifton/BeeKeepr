@@ -1,0 +1,186 @@
+/*
+ * HivePicker.module.css
+ *
+ * Each hive row is a CSS grid with three columns × two rows. The
+ * right-side temp/age cells are DIRECT grid children (not wrapped in a
+ * vertically centered flex column) so the temp sits in row 1 next to
+ * the name, and the "Xm ago" sits in row 2 next to the location. That
+ * gives pixel-perfect baseline alignment regardless of the relative
+ * line-heights of the two rows.
+ *
+ *   | col 1 (12px)        | col 2 (1fr)         | col 3 (5.5rem, right) |
+ *   |---------------------|---------------------|-----------------------|
+ *   | status dot · 2 rows | hive name   · row 1 | temp       · row 1    |
+ *   |                     | location    · row 2 | "Xm ago"   · row 2    |
+ *
+ * The status dot spans both rows (grid-row: 1 / span 2) and is
+ * vertically centered against the combined text block, so the dot stays
+ * on the visual midline regardless of how the row stretches.
+ *
+ * Visual tokens (amber rail, soft amber background, inset border, focus
+ * ring, hover wash) match the previous Tailwind class strings so the
+ * picker still feels like part of the dashboard.
+ */
+
+.item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) 5.5rem;
+  grid-template-rows: auto auto;
+  column-gap: 12px;
+  row-gap: 3px;
+  /* Items align to the start of their grid rows by default; setting
+     stretch keeps the cell heights identical within each row but the
+     text/values themselves sit at the top of their cells, which is what
+     makes the name line up with the temp and the location with "Xm
+     ago". */
+  align-items: start;
+  width: 100%;
+  min-height: 64px;
+  /* 12px left padding + the 3px border-left below = 15px to the dot
+     column, which keeps the dot in roughly the same visual position as
+     the previous Tailwind-based layout. */
+  padding: 12px 14px 12px 12px;
+  background: transparent;
+  border: 0;
+  border-left: 3px solid transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.item:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.item:focus-visible {
+  outline: none;
+  background: rgba(255, 255, 255, 0.04);
+  /* 2px inset amber ring — same visual weight as the previous
+     `focus-visible:ring-2 focus-visible:ring-amber/60 ring-inset`. */
+  box-shadow: inset 0 0 0 2px rgba(245, 185, 66, 0.6);
+}
+
+.item.selected {
+  background: rgba(245, 185, 66, 0.06);
+  border-left-color: #f5b942;
+  /* 1px inset amber border — same as the previous
+     `shadow-[inset_0_0_0_1px_rgba(245,185,66,0.18)]`. */
+  box-shadow: inset 0 0 0 1px rgba(245, 185, 66, 0.18);
+}
+
+/* Selected row needs both the focus ring (when focused) and the selected
+   inset border to coexist. Layer focus on top so the ring stays visible
+   above the selected border. */
+.item.selected:focus-visible {
+  background: rgba(245, 185, 66, 0.06);
+  box-shadow:
+    inset 0 0 0 2px rgba(245, 185, 66, 0.6),
+    inset 0 0 0 1px rgba(245, 185, 66, 0.18);
+}
+
+/* Dot column — column 1, spans both grid rows so the dot stays centered
+   against the two-line text block. justify-self centers the dot within
+   the 12px column. The actual color comes from the TONES Tailwind class
+   applied alongside this module class. */
+.dot {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  justify-self: center;
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* Same dimensions and grid placement as .dot but transparent — used when
+   the global stale banner is showing or the status is 'default', so the
+   dot column still occupies its 12px slot and the text stays aligned with
+   the rows that do show a dot. */
+.dotPlaceholder {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  justify-self: center;
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+/* Primary label (hive name) — first row of the text column. */
+.name {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: rgba(255, 255, 255, 0.95);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item.selected .name {
+  color: #ffffff;
+}
+
+/* Secondary label (location) — second row of the text column. */
+.location {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: start;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Primary metric (latest temperature) — first row, third column. Lives
+   in the same grid row as `.name` so the temp and hive name share an
+   identical baseline. justify-self: end right-aligns the value within
+   the fixed-width 5.5rem column. */
+.temp {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: start;
+  justify-self: end;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.item.selected .temp {
+  color: #ffd166;
+}
+
+/* Secondary metric (last seen time) — second row, third column. Lives
+   in the same grid row as `.location` so "Xm ago" and the location name
+   share an identical baseline. */
+.age {
+  grid-column: 3;
+  grid-row: 2;
+  align-self: start;
+  justify-self: end;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+}

@@ -38,11 +38,8 @@ export default function ProtectedRoute({ children }) {
   /* Hold the route until auth resolves */
   if (status === 'loading') {
     return (
-      <div style={{
-        minHeight: '100vh', display: 'flex', alignItems: 'center',
-        justifyContent: 'center', background: 'var(--bg)',
-      }}>
-        <div style={{ color: 'var(--text-secondary)', fontSize: '14px', fontWeight: 700 }}>Loading…</div>
+      <div className="flex min-h-screen items-center justify-center bg-bg">
+        <div className="text-[14px] font-bold text-ink-secondary">Loading…</div>
       </div>
     );
   }

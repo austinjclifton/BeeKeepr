@@ -143,56 +143,46 @@ export default function Navigation() {
       {isMobile && mobileOpen && (
         <div
           onClick={() => setMobileOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.55)',
-            zIndex: 299,
-          }}
+          className="fixed inset-0 z-[299] bg-black/55"
         />
       )}
 
-      <aside style={{
-        width: isMobile ? '240px' : (isExpanded ? '240px' : '72px'),
-        minHeight: '100vh',
-        background: 'linear-gradient(180deg, #090909 0%, #050505 100%)',
-        borderRight: '1px solid var(--border)',
-        display: 'flex',
-        flexDirection: 'column',
-        transition: isMobile
-          ? 'left 0.25s cubic-bezier(0.4,0,0.2,1)'
-          : 'width 0.25s cubic-bezier(0.4,0,0.2,1)',
-        overflow: 'hidden',
-        flexShrink: 0,
-        position: isMobile ? 'fixed' : 'sticky',
-        top: 0,
-        left: isMobile ? (mobileOpen ? '0' : '-260px') : 'auto',
-        zIndex: isMobile ? 300 : 'auto',
-        height: '100vh',
-      }}>
+      <aside
+        className={
+          'flex h-screen shrink-0 flex-col overflow-hidden ' +
+          (isMobile
+            ? `fixed top-0 z-[300] transition-[left] duration-300 ease-out ${mobileOpen ? 'left-0' : '-left-[260px]'}`
+            : 'sticky top-0 transition-[width] duration-300 ease-out')
+        }
+        style={{
+          width: isMobile ? '240px' : (isExpanded ? '240px' : '72px'),
+          background: 'linear-gradient(180deg, #090909 0%, #050505 100%)',
+          borderRight: '1px solid #2a2a2a',
+          minHeight: '100vh',
+        }}
+      >
         {/* Brand and controls */}
-        <div style={{
-          padding: effectiveExpanded ? '28px 20px 24px' : '18px 10px 14px',
-          display: 'flex',
-          alignItems: 'center',
-          flexDirection: effectiveExpanded ? 'row' : 'column',
-          gap: effectiveExpanded ? '12px' : '12px',
-          borderBottom: '1px solid var(--border)',
-          justifyContent: effectiveExpanded ? 'space-between' : 'center',
-          minHeight: effectiveExpanded ? '93px' : '116px',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '40px', height: '40px',
-              borderRadius: '10px', display: 'flex', alignItems: 'center',
-              justifyContent: 'center', flexShrink: 0, overflow: 'hidden',
-            }}>
-              <img src={beeLogo} alt="BeeKeepr logo" width="40" height="40" style={{ display: 'block', objectFit: 'cover' }} />
+        <div
+          className={
+            'flex items-center border-line border-b ' +
+            (effectiveExpanded ? 'flex-row justify-between' : 'flex-col justify-center')
+          }
+          style={{
+            padding: effectiveExpanded ? '28px 20px 24px' : '18px 10px 14px',
+            gap: '12px',
+            minHeight: effectiveExpanded ? '93px' : '116px',
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[10px]"
+            >
+              <img src={beeLogo} alt="BeeKeepr logo" width="40" height="40" className="block object-cover" />
             </div>
             {effectiveExpanded && (
               <div>
-                <div style={{ color: 'white', fontWeight: 850, fontSize: '18px', lineHeight: 1.2 }}>BeeKeepr</div>
-                <div style={{ color: 'var(--text-muted)', fontSize: '11px', marginTop: '2px' }}>Analytics</div>
+                <div className="text-[18px] font-extrabold leading-[1.2] text-white">BeeKeepr</div>
+                <div className="mt-[2px] text-[11px] text-ink-muted">Analytics</div>
               </div>
             )}
           </div>
@@ -200,30 +190,7 @@ export default function Navigation() {
             <button
               onClick={handleToggle}
               title={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
-              style={{
-                width: '32px',
-                height: '32px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'rgba(255,255,255,0.045)',
-                border: '1px solid var(--border)',
-                color: 'var(--text-muted)',
-                cursor: 'pointer',
-                borderRadius: '10px',
-                transition: 'color 0.15s, border-color 0.15s, background 0.15s',
-                position: 'static',
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.color = 'white';
-                e.currentTarget.style.borderColor = 'rgba(245,185,66,0.45)';
-                e.currentTarget.style.background = 'rgba(245,185,66,0.1)';
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.color = 'var(--text-muted)';
-                e.currentTarget.style.borderColor = 'var(--border)';
-                e.currentTarget.style.background = 'rgba(255,255,255,0.045)';
-              }}
+              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-[10px] border border-line bg-white/[0.045] text-ink-muted transition hover:border-amber/45 hover:bg-amber/10 hover:text-white"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round">
                 {isExpanded
@@ -237,16 +204,7 @@ export default function Navigation() {
           {isMobile && (
             <button
               onClick={() => setMobileOpen(false)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'rgba(255,255,255,0.6)',
-                cursor: 'pointer',
-                padding: '4px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
+              className="flex cursor-pointer items-center justify-center border-none bg-transparent p-1 text-white/60"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <line x1="18" y1="6" x2="6" y2="18" />
@@ -257,7 +215,7 @@ export default function Navigation() {
         </div>
 
         {/* Navigation items */}
-        <nav style={{ flex: 1, padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        <nav className="flex flex-1 flex-col gap-[2px] py-3 px-2.5">
           {NAV_ITEMS.map((item) => {
             const isActive = location.pathname === item.href;
             return (
@@ -265,35 +223,22 @@ export default function Navigation() {
                 key={item.href}
                 to={item.href}
                 title={!effectiveExpanded ? item.label : undefined}
-                style={{
-                  display: 'flex', alignItems: 'center',
-                  gap: '12px',
-                  padding: effectiveExpanded ? '10px 12px' : '10px',
-                  borderRadius: '10px',
-                  color: isActive ? 'white' : 'var(--text-secondary)',
-                  background: isActive ? 'rgba(245,185,66,0.12)' : 'transparent',
-                  border: isActive ? '1px solid rgba(245,185,66,0.22)' : '1px solid transparent',
-                  fontWeight: isActive ? 800 : 600,
-                  fontSize: '14px',
-                  transition: 'all 0.15s ease',
-                  textDecoration: 'none',
-                  justifyContent: effectiveExpanded ? 'flex-start' : 'center',
-                  position: 'relative',
-                }}
-                onMouseEnter={e => {
-                  if (!isActive) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'white'; }
-                }}
-                onMouseLeave={e => {
-                  if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }
-                }}
+                className={
+                  'group/nav-link relative flex items-center gap-3 rounded-[10px] text-[14px] font-semibold transition-all duration-150 ' +
+                  (effectiveExpanded ? 'px-3 py-2.5 justify-start' : 'px-0 py-2.5 justify-center') +
+                  (isActive
+                    ? ' border border-amber/22 bg-amber/12 font-extrabold text-white'
+                    : ' border border-transparent text-ink-secondary hover:bg-white/[0.06] hover:text-white')
+                }
+                style={{ textDecoration: 'none' }}
               >
                 {isActive && (
-                  <span style={{
-                    position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-                    width: '3px', height: '20px', background: '#f5a623', borderRadius: '0 3px 3px 0',
-                  }} />
+                  <span
+                    className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-md"
+                    style={{ background: '#f5a623' }}
+                  />
                 )}
-                <span style={{ color: isActive ? 'var(--amber)' : 'inherit', flexShrink: 0 }}>{item.icon}</span>
+                <span className={isActive ? 'shrink-0 text-amber' : 'shrink-0'}>{item.icon}</span>
                 {effectiveExpanded && <span>{item.label}</span>}
               </Link>
             );
@@ -301,24 +246,24 @@ export default function Navigation() {
         </nav>
 
         {/* User footer */}
-        <div style={{ borderTop: '1px solid var(--border)', padding: '12px 10px' }}>
-          {/* User summary */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '10px',
-            justifyContent: effectiveExpanded ? 'space-between' : 'center',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{
-                width: '32px', height: '32px', borderRadius: '50%', background: 'var(--amber)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#050505', fontWeight: 850, fontSize: '13px', flexShrink: 0,
-              }}>
+        <div className="border-line border-t py-3 px-2.5">
+          <div
+            className={
+              'flex items-center gap-2.5 rounded-[10px] p-2 ' +
+              (effectiveExpanded ? 'justify-between' : 'justify-center')
+            }
+          >
+            <div className="flex items-center gap-2.5">
+              <div
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-extrabold text-navy"
+                style={{ background: '#f5b942' }}
+              >
                 {initials}
               </div>
               {effectiveExpanded && (
                 <div>
-                  <div style={{ color: 'white', fontWeight: 800, fontSize: '13px' }}>{displayName}</div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{user?.email || 'Beekeeper'}</div>
+                  <div className="text-[13px] font-extrabold text-white">{displayName}</div>
+                  <div className="text-[11px] text-ink-muted">{user?.email || 'Beekeeper'}</div>
                 </div>
               )}
             </div>
@@ -326,13 +271,7 @@ export default function Navigation() {
               <button
                 onClick={handleLogout}
                 title="Sign out"
-                style={{
-                  background: 'transparent', border: 'none', color: 'var(--text-muted)',
-                  cursor: 'pointer', padding: '4px', borderRadius: '6px', display: 'flex', alignItems: 'center',
-                  transition: 'color 0.15s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.color = 'rgba(255,255,255,0.85)'}
-                onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}
+                className="flex cursor-pointer items-center rounded-md border-none bg-transparent p-1 text-ink-muted transition hover:text-white/85"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />

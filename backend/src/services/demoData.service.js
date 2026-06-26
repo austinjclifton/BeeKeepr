@@ -7,6 +7,7 @@ const demoDataRepo = require("../db/demoData.db.js");
 const usersRepo = require("../db/users.db.js");
 const ingestRepo = require("../db/ingest.db.js");
 const externalConditionsRepo = require("../db/externalConditions.db.js");
+const externalConditionsService = require("./externalConditions.service.js");
 const alertsService = require("./alerts.service.js");
 const locationsService = require("./locations.service.js");
 const hivesService = require("./hives.service.js");
@@ -15,6 +16,7 @@ const {
   buildExternalCondition,
   buildReadingInput,
   floorToInterval,
+  subtractUtcDays,
   subtractUtcMonths,
   toIntervalMs,
 } = require("../utils/demoSimulation.js");
@@ -205,6 +207,7 @@ exports.resetDemoRuntimeData = async function resetDemoRuntimeData() {
 exports.runDemoTick = async function runDemoTick({ now = new Date() } = {}) {
   const intervalMinutes = demoConfig.history.intervalMinutes;
   const bucketAtDate = floorToInterval(toDate(now, "now"), intervalMinutes);
+  const useRealWeather = demoConfig.tick?.useRealWeather === true;
   const result = await runDemoRange({
     startAt: bucketAtDate,
     endAt: bucketAtDate,
@@ -213,6 +216,7 @@ exports.runDemoTick = async function runDemoTick({ now = new Date() } = {}) {
     sendCriticalEmails: true,
     touchLastSeen: true,
     batchSize: demoConfig.hives.length,
+    externalSource: useRealWeather ? "realWeather" : "synthesis",
   });
 
   return {
@@ -250,7 +254,8 @@ exports.runDemoTick = async function runDemoTick({ now = new Date() } = {}) {
 exports.runDemoBackfill = async function runDemoBackfill({
   start = null,
   end = null,
-  months = demoConfig.history.months,
+  days = null,
+  months = null,
   intervalMinutes = demoConfig.history.intervalMinutes,
   withAlerts = false,
   now = new Date(),
@@ -259,7 +264,8 @@ exports.runDemoBackfill = async function runDemoBackfill({
   const window = resolveBackfillWindow({
     start,
     end,
-    months,
+    days: days == null ? demoConfig.history.days : days,
+    months: months == null ? demoConfig.history.months : months,
     intervalMinutes,
     now,
   });
@@ -274,8 +280,64 @@ exports.runDemoBackfill = async function runDemoBackfill({
     batchSize,
     requestedEndAt: window.requestedEndAt,
     futureBucketsSkipped: window.futureBucketsSkipped,
+    externalSource: "synthesis",
   });
 };
+
+async function fetchRealWeatherForLocation(location, bucketAtDate) {
+  /*
+   * Calls the OpenWeather-backed external conditions service for the
+   * intended 10-minute bucket. We pass `bucketAtDate` so the service's
+   * dedup and write target the same bucket the tick is building (instead
+   * of "now", which would mismatch when the tick is replaying a past
+   * bucket or running a few seconds late).
+   *
+   * The service itself writes the row (or writes a `status: "failed"`
+   * row if the API call fails), so we return the mapped condition and
+   * let the caller skip its own batch insert.
+   *
+   * Returns `null` on failure so the caller can fall back to the
+   * synthesis path for that bucket (and write the row itself).
+   */
+  try {
+    const row = await externalConditionsService.fetchCurrentForLocation({
+      locationId: location.locationId,
+      now: bucketAtDate,
+    });
+
+    if (!row || row.status !== "success") {
+      return null;
+    }
+
+    const temperature = normalizeNullableNumber(row.temperature);
+    if (temperature === null) {
+      return null;
+    }
+
+    return {
+      provider: row.provider || "openweather",
+      condition: {
+        temperature,
+        humidityPct: normalizeNullableNumber(row.humidity_pct),
+        precipMm: normalizeNullableNumber(row.precip_mm),
+        windMps: normalizeNullableNumber(row.wind_mps),
+        windGustMps: normalizeNullableNumber(row.wind_gust_mps),
+        pressureHpa: normalizeNullableNumber(row.pressure_hpa),
+        cloudPct: normalizeNullableNumber(row.cloud_pct),
+      },
+    };
+  } catch (err) {
+    return null;
+  }
+}
+
+function normalizeNullableNumber(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
 
 async function runDemoRange({
   startAt,
@@ -287,6 +349,7 @@ async function runDemoRange({
   batchSize,
   requestedEndAt = endAt,
   futureBucketsSkipped = 0,
+  externalSource = "synthesis",
 }) {
   const seed = await exports.ensureDemoSeed();
   const topology = await buildDemoTopology(seed);
@@ -304,6 +367,7 @@ async function runDemoRange({
   const locationByKey = new Map(topology.locations.map((location) => [location.key, location]));
   const externalBatch = [];
   const readingBatch = [];
+  const useRealWeather = externalSource === "realWeather";
 
   for (let atMs = startAt.getTime(); atMs <= endAt.getTime(); atMs += intervalMs) {
     const bucketAtDate = new Date(atMs);
@@ -311,29 +375,51 @@ async function runDemoRange({
     const externalByLocationKey = new Map();
 
     for (const location of topology.locations) {
-      const external = buildExternalCondition(location, bucketAtDate);
+      let external;
+      let providerForRow = demoConfig.provider;
+      let externalAlreadyPersisted = false;
+
+      if (useRealWeather) {
+        const realRow = await fetchRealWeatherForLocation(location, bucketAtDate);
+        if (realRow) {
+          external = realRow.condition;
+          providerForRow = realRow.provider;
+          externalAlreadyPersisted = true;
+          summary.tables.external_condition.inserted += 1;
+          const locationSummary = summary.locationsByKey.get(location.key);
+          locationSummary.inserted += 1;
+        } else {
+          external = buildExternalCondition(location, bucketAtDate);
+        }
+      } else {
+        external = buildExternalCondition(location, bucketAtDate);
+      }
+
       externalByLocationKey.set(location.key, external);
-      externalBatch.push({
-        locationKey: location.key,
-        locationId: location.locationId,
-        bucketAt,
-        fetchedAt: bucketAt,
-        provider: demoConfig.provider,
-        status: "success",
-        temperature: external.temperature,
-        humidityPct: external.humidityPct,
-        precipMm: external.precipMm,
-        windMps: external.windMps,
-        windGustMps: external.windGustMps,
-        pressureHpa: external.pressureHpa,
-        cloudPct: external.cloudPct,
-        rawJson: {
-          source: demoConfig.provider,
-          cityName: location.cityName,
+
+      if (!externalAlreadyPersisted) {
+        externalBatch.push({
+          locationKey: location.key,
+          locationId: location.locationId,
           bucketAt,
-          climateProfile: location.key,
-        },
-      });
+          fetchedAt: bucketAt,
+          provider: providerForRow,
+          status: "success",
+          temperature: external.temperature,
+          humidityPct: external.humidityPct,
+          precipMm: external.precipMm,
+          windMps: external.windMps,
+          windGustMps: external.windGustMps,
+          pressureHpa: external.pressureHpa,
+          cloudPct: external.cloudPct,
+          rawJson: {
+            source: providerForRow,
+            cityName: location.cityName,
+            bucketAt,
+            climateProfile: location.key,
+          },
+        });
+      }
 
       const locationSummary = summary.locationsByKey.get(location.key);
       locationSummary.latestTemperature = external.temperature;
@@ -599,6 +685,7 @@ async function buildDemoTopology(seed) {
 function resolveBackfillWindow({
   start,
   end,
+  days,
   months,
   intervalMinutes,
   now,
@@ -612,13 +699,21 @@ function resolveBackfillWindow({
     ? floorToInterval(toDate(end, "end"), normalizedIntervalMinutes)
     : nowBucket;
   const endAt = requestedEndAt > nowBucket ? nowBucket : requestedEndAt;
-  const monthsValue = toPositiveInteger(months, "months");
+  const daysValue = days == null ? null : toPositiveInteger(days, "days");
+  const monthsValue = daysValue == null
+    ? toPositiveInteger(months == null ? 1 : months, "months")
+    : null;
   const startAt = start
     ? floorToInterval(toDate(start, "start"), normalizedIntervalMinutes)
-    : floorToInterval(
-      subtractUtcMonths(endAt, monthsValue),
-      normalizedIntervalMinutes,
-    );
+    : daysValue != null
+      ? floorToInterval(
+        subtractUtcDays(endAt, daysValue),
+        normalizedIntervalMinutes,
+      )
+      : floorToInterval(
+        subtractUtcMonths(endAt, monthsValue),
+        normalizedIntervalMinutes,
+      );
 
   if (startAt > endAt) {
     throw new Error("Backfill start must be before or equal to end");

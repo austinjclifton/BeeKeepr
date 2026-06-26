@@ -1,62 +1,37 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import Box from '@mui/material/Box';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
 import Navigation from '../components/Navigation';
 import DashboardSection from '../components/analytics/DashboardSection';
+import FleetComparisonSection from '../components/analytics/FleetComparisonSection';
 import HiveMetricsTable from '../components/analytics/HiveMetricsTable';
-import HiveSelector from '../components/analytics/HiveSelector';
-import HiveStatusGrid from '../components/analytics/HiveStatusGrid';
-import StatCard from '../components/analytics/StatCard';
-import StatusBadge from '../components/analytics/StatusBadge';
+import HivePicker from '../components/analytics/HivePicker';
+import OperationsSummaryStrip from '../components/analytics/OperationsSummaryStrip';
+import SelectedHiveSection from '../components/analytics/SelectedHiveSection';
 import { EmptyState, ErrorState, LoadingState } from '../components/analytics/StateBlocks';
 import {
   getAlerts,
   getDashboardFleetTemperature24h,
   getDashboardHiveTemperature24h,
 } from '../api';
+import { useAsyncResource } from '../hooks/useAsyncResource';
 import { useAuth } from '../hooks/useAuth';
+import { useDashboardMetrics } from '../hooks/useDashboardMetrics';
 import { useHiveAnalytics } from '../hooks/useHiveAnalytics';
 import { useHiveStatus } from '../hooks/useHiveStatus';
 import { useSelectedHive } from '../hooks/useSelectedHive';
-import {
-  averageDefined,
-  formatCount,
-  formatDateTime,
-  formatPercent,
-  formatPrecipMm,
-  formatPressureHpa,
-  formatTemperature,
-  formatWindMps,
-  getHiveId,
-} from '../utils/analyticsFormat';
+import { formatRelativeTime, getHiveId } from '../utils/analyticsFormat';
 
-// Fixed dashboard range
+// Fixed dashboard range (preset analytics range used by all dashboard queries).
 const DASHBOARD_RANGE = '1d';
-const DashboardHiveTemperatureChart = lazy(() => import('../components/analytics/DashboardHiveTemperatureChart'));
-const MultiHiveComparisonChart = lazy(() => import('../components/analytics/MultiHiveComparisonChart'));
 
-function HamburgerBtn() {
-  return (
-    <button
-      className="mobile-menu-btn"
-      type="button"
-      onClick={() => window.dispatchEvent(new Event('openMobileNav'))}
-      aria-label="Open navigation"
-    >
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-        <line x1="3" y1="6" x2="21" y2="6" />
-        <line x1="3" y1="12" x2="21" y2="12" />
-        <line x1="3" y1="18" x2="21" y2="18" />
-      </svg>
-    </button>
-  );
-}
+// Above this age the dashboard treats the data as stale even if some
+// hives still report "online" status — applies to any account whose
+// newest reading is older than the threshold.
+const GLOBAL_STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
 
 export default function Dashboard() {
-  const navigate = useNavigate();
   const { ready: authReady, error: authError } = useAuth();
 
-  // Shared hive status and selection
+  // Shared hive status + selection.
   const status = useHiveStatus(DASHBOARD_RANGE, { enabled: authReady && !authError });
   const { hives } = status;
   const { selectedHive, selectedHiveId, setSelectedHiveId } = useSelectedHive(hives);
@@ -65,36 +40,90 @@ export default function Dashboard() {
     enabled: authReady && !authError && Number.isInteger(selectedId) && selectedId > 0,
   });
 
-  const hiveIds = useMemo(
-    () => hives.map(getHiveId).filter(Boolean),
-    [hives],
-  );
-  const hiveIdsKey = hiveIds.join(',');
-  const compareIds = useMemo(
-    () => hiveIds.slice(0, Math.min(10, hiveIds.length)),
-    [hiveIdsKey],
-  );
-
-  // Side queries for cards and charts
+  // Side-query state: unresolved alert count + two async resources
+  // (selected hive timeline, fleet timeline). The two resources share
+  // the {data, loading, error} shape so we use the shared hook.
   const [activeAlertCount, setActiveAlertCount] = useState(null);
-  const [selectedTimeline, setSelectedTimeline] = useState({ data: null, loading: false, error: '' });
-  const [fleetTimeline, setFleetTimeline] = useState({ data: null, loading: false, error: '' });
+  const selectedTimelineEnabled =
+    authReady && !authError && Number.isInteger(selectedId) && selectedId > 0;
+  const selectedTimeline = useAsyncResource(
+    () => getDashboardHiveTemperature24h(selectedId),
+    [authReady, authError, selectedId],
+    {
+      enabled: selectedTimelineEnabled,
+      errorFallback: 'Failed to load selected hive timeline',
+    },
+  );
+  const fleetTimelineEnabled = authReady && !authError && hives.length >= 2;
+  const fleetTimeline = useAsyncResource(
+    () => getDashboardFleetTemperature24h(),
+    [authReady, authError, hives.length],
+    {
+      enabled: fleetTimelineEnabled,
+      errorFallback: 'Failed to load fleet temperature timeline',
+    },
+  );
 
-  // Outside weather rollup
-  const externalStats = useMemo(() => {
-    const withExternal = hives.filter(hive => hive.externalConditionAt);
-    const latest = withExternal
-      .slice()
-      .sort((a, b) => new Date(b.externalConditionAt).getTime() - new Date(a.externalConditionAt).getTime())[0];
-
-    return {
-      averageTemperature: averageDefined(withExternal.map(hive => hive.externalTemperature)),
-      latestTemperature: latest?.externalTemperature ?? null,
-      latestAt: latest?.externalConditionAt ?? null,
-    };
+  // Global freshness: when the newest reading across every hive is
+  // older than the stale threshold, surface one calm banner and
+  // quieten the per-row OFFLINE indicators so the page doesn't shout
+  // the same alarm N times.
+  const globalStale = useMemo(() => {
+    if (!hives?.length) return null;
+    const lastSeenMs = hives.reduce((acc, hive) => {
+      if (!hive?.latestReadingAt) return acc;
+      const t = new Date(hive.latestReadingAt).getTime();
+      return Number.isFinite(t) && (acc == null || t > acc) ? t : acc;
+    }, null);
+    if (lastSeenMs == null) return null;
+    const ageMs = Date.now() - lastSeenMs;
+    return ageMs > GLOBAL_STALE_THRESHOLD_MS
+      ? { lastSeenIso: new Date(lastSeenMs).toISOString() }
+      : null;
   }, [hives]);
 
-  // Count unresolved alerts
+  // Hive list ordering for the picker + metrics table. Group by
+  // location first (alphabetical), then by hive name within each
+  // location. Hive id breaks ties for a fully stable order. The
+  // summary strip and selected-hive lookups don't depend on this
+  // order, so the raw `hives` array continues to feed them.
+  //
+  // No displayOrder column exists on the location table, so the
+  // chosen order is alphabetical by location name. For the demo
+  // fleet this yields:
+  //   Blue Ridge Appalachia Demo Yard
+  //     Blue Ridge Stable Hive
+  //     Pisgah Orchard Hive
+  //   Western New York Demo Yard
+  //     Finger Lakes Variable Hive
+  //     Lake Erie Stable Hive
+  //     Niagara Snowbelt Hive
+  // which matches the preferred final grouped order.
+  const sortedHives = useMemo(() => {
+    if (!Array.isArray(hives) || hives.length === 0) return hives;
+    // Sentinel for null/empty location names — sorts them to the
+    // end of the list so hives with a real location come first.
+    const NO_LOCATION = '\uFFFF';
+    return [...hives].sort((a, b) => {
+      const aLoc = (a?.locationName || '').trim() || NO_LOCATION;
+      const bLoc = (b?.locationName || '').trim() || NO_LOCATION;
+      if (aLoc !== bLoc) return aLoc.localeCompare(bLoc);
+      const aName = (a?.name || '').trim();
+      const bName = (b?.name || '').trim();
+      if (aName !== bName) return aName.localeCompare(bName);
+      const aId = getHiveId(a) ?? 0;
+      const bId = getHiveId(b) ?? 0;
+      return aId - bId;
+    });
+  }, [hives]);
+
+  // Operations summary strip — owns all rollups derived from `hives`.
+  const { metrics: summaryMetrics, rangeLabel: summaryRangeLabel } = useDashboardMetrics({
+    hives,
+    activeAlertCount,
+  });
+
+  // Count unresolved alerts.
   useEffect(() => {
     let cancelled = false;
     if (!authReady || authError) return () => { cancelled = true; };
@@ -115,112 +144,19 @@ export default function Dashboard() {
     return () => { cancelled = true; };
   }, [authReady, authError]);
 
-  // Load selected hive timeline
-  useEffect(() => {
-    let cancelled = false;
-    if (!authReady || authError || !Number.isInteger(selectedId) || selectedId <= 0) {
-      setSelectedTimeline({ data: null, loading: false, error: '' });
-      return () => { cancelled = true; };
-    }
-
-    async function loadSelectedTimeline() {
-      setSelectedTimeline(prev => ({ ...prev, loading: true, error: '' }));
-      try {
-        const data = await getDashboardHiveTemperature24h(selectedId);
-        if (!cancelled) setSelectedTimeline({ data, loading: false, error: '' });
-      } catch (err) {
-        if (!cancelled) {
-          setSelectedTimeline({
-            data: null,
-            loading: false,
-            error: err.message || 'Failed to load selected hive timeline',
-          });
-        }
-      }
-    }
-
-    loadSelectedTimeline();
-    return () => { cancelled = true; };
-  }, [authReady, authError, selectedId]);
-
-  // Load fleet timeline
-  useEffect(() => {
-    let cancelled = false;
-    if (!authReady || authError || hives.length < 2) {
-      setFleetTimeline({ data: null, loading: false, error: '' });
-      return () => { cancelled = true; };
-    }
-
-    async function loadFleetTimeline() {
-      setFleetTimeline(prev => ({ ...prev, loading: true, error: '' }));
-      try {
-        const data = await getDashboardFleetTemperature24h();
-        if (!cancelled) setFleetTimeline({ data, loading: false, error: '' });
-      } catch (err) {
-        if (!cancelled) {
-          setFleetTimeline({
-            data: null,
-            loading: false,
-            error: err.message || 'Failed to load fleet temperature timeline',
-          });
-        }
-      }
-    }
-
-    loadFleetTimeline();
-    return () => { cancelled = true; };
-  }, [authReady, authError, hiveIdsKey, hives.length]);
-
-  // Top-line hive metrics
-  const overview = useMemo(() => {
-    const healthy = hives.filter(hive => hive.healthStatus === 'healthy').length;
-    const warning = hives.filter(hive => hive.healthStatus === 'warning').length;
-    const critical = hives.filter(hive => hive.healthStatus === 'critical').length;
-    const avgTemp = averageDefined(hives.map(hive => hive.averageTemperature ?? hive.latestTemperature));
-
-    return {
-      total: hives.length,
-      healthy,
-      warning,
-      critical,
-      avgTemp,
-    };
-  }, [hives]);
-
-  // Selected hive detail
-  const selectedSummary = selectedAnalytics.summary ?? {};
-  const selectedName = selectedHive?.name || (selectedId ? `Hive ${selectedId}` : 'No hive selected');
-  const selectedLocationName = selectedHive?.locationName || 'No location';
-  const outsideTemp = externalStats.averageTemperature ?? externalStats.latestTemperature;
-  const selectedExternalTemp = selectedHive?.externalTemperature ?? null;
-  const selectedTempDelta =
-    Number.isFinite(Number(selectedSummary.latestTemperature)) &&
-      Number.isFinite(Number(selectedExternalTemp))
-      ? Number(selectedSummary.latestTemperature) - Number(selectedExternalTemp)
-      : null;
-
   return (
-    <div className="app-shell">
+    <div className="app-shell flex min-h-screen" data-debug-dashboard>
       <Navigation />
-      <main className="page-main">
-        <div className="page-content">
-          <header className="page-header">
-            <div>
-              <div className="page-title-row">
-                <HamburgerBtn />
-                <div className="page-kicker">Operations</div>
-              </div>
-              <h1>Operations Dashboard</h1>
-              <p className="page-subtitle">Live 24-hour status across every BeeKeepr hive.</p>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'end', gap: '14px', flexWrap: 'wrap' }}>
-              <HiveSelector
-                hives={hives}
-                selectedHiveId={selectedHiveId}
-                onChange={setSelectedHiveId}
-                compact
-              />
-              <div className="range-context-pill">24 Hours</div>
+      <main className="flex-1 min-w-0 overflow-auto">
+        <div className="mx-auto w-full max-w-content px-7 py-7">
+          <header className="mb-6">
+            <div className="min-w-0">
+              <h1 className="text-[clamp(26px,4vw,42px)] font-black leading-none text-white">
+                Operations Dashboard
+              </h1>
+              <p className="mt-2 text-[14px] text-ink-secondary">
+                Live 24-hour status across all of your hives
+              </p>
             </div>
           </header>
 
@@ -233,168 +169,94 @@ export default function Dashboard() {
           ) : hives.length === 0 ? (
             <EmptyState
               title="No hives yet"
-              detail="This account does not have hive data yet. Demo accounts should be preloaded separately."
+              detail="This account does not have hive data yet. Connect a device or import historical data to get started."
             />
           ) : (
             <>
-              {/* Overview cards */}
-              <div className="stat-grid dashboard-stat-grid">
-                <StatCard label="Total Hives" value={formatCount(overview.total)} detail="Owned hives in BeeKeepr" />
-                <StatCard label="Healthy Hives" value={formatCount(overview.healthy)} detail="Reporting normally" tone="healthy" />
-                <StatCard label="Warning Hives" value={formatCount(overview.warning)} detail="Needs review" tone="warning" />
-                <StatCard label="Critical Hives" value={formatCount(overview.critical)} detail="Immediate attention" tone="critical" />
-                <StatCard label="Hive Avg Temp" value={formatTemperature(overview.avgTemp)} detail="Internal average, 24h" />
-                <StatCard label="Outside Temp" value={formatTemperature(outsideTemp)} detail={externalStats.latestAt ? `Latest ${formatDateTime(externalStats.latestAt)}` : 'Weather data unavailable'} tone="muted" />
-                <StatCard
-                  label="Active Alerts"
-                  value={activeAlertCount == null ? '—' : formatCount(activeAlertCount)}
-                  detail="Unresolved alert stream"
-                  tone={activeAlertCount > 0 ? 'warning' : 'healthy'}
-                  onClick={() => navigate('/alerts')}
-                />
-              </div>
-
-              {/* Hive status grid */}
-              <DashboardSection title="Hive Status" eyebrow="Operational Overview">
-                <HiveStatusGrid
-                  hives={hives}
-                  selectedHiveId={selectedHiveId}
-                  onSelect={setSelectedHiveId}
-                />
-              </DashboardSection>
-
-              {/* Selected hive detail */}
-              <DashboardSection
-                title={selectedHive ? (
-                  <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
-                    <span>{selectedName}</span>
-                    <span style={{ color: 'var(--text-secondary)', fontSize: '14px', fontWeight: 600 }}>
-                      {selectedLocationName}
-                    </span>
-                  </span>
-                ) : selectedName}
-                eyebrow="Selected Hive 24h Graph and Summary"
-                action={selectedHive && <StatusBadge status={selectedHive.healthStatus} />}
-              >
-                {selectedAnalytics.error || selectedTimeline.error ? (
-                  <ErrorState message={selectedAnalytics.error || selectedTimeline.error} />
-                ) : (
-                  <Box
-                    className="selected-hive-layout"
-                    sx={{
-                      display: 'grid',
-                      gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1.35fr) minmax(340px, 0.65fr)' },
-                      gap: 2,
-                      alignItems: 'start',
-                    }}
-                  >
-                    <div className="analytics-card chart-card selected-hive-chart-card">
-                      <div style={{ marginBottom: '10px' }}>
-                        <div className="section-eyebrow">24 Hour Temperature Trend</div>
-                        <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-                          Internal hive temperature and outside conditions displayed in 10-minute buckets
-                        </div>
-                      </div>
-                      <Suspense fallback={<LoadingState label="Loading chart renderer…" />}>
-                        <DashboardHiveTemperatureChart
-                          timeline={selectedTimeline.data}
-                          hiveName={selectedName}
-                          loading={selectedTimeline.loading}
-                        />
-                      </Suspense>
-                    </div>
-
-                    <div className="selected-hive-side">
-                      <Box
-                        className="selected-hive-stats-grid compact-stat-grid"
-                        sx={{
-                          display: 'grid',
-                          gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
-                          gap: 1.5,
-                        }}
-                      >
-                        <StatCard compact label="Latest" value={formatTemperature(selectedSummary.latestTemperature)} detail={formatDateTime(selectedSummary.latestReadingAt)} />
-                        <StatCard compact label="Average" value={formatTemperature(selectedSummary.averageTemperature)} detail={`${formatCount(selectedSummary.readingCount)} readings`} />
-                        <StatCard compact label="Minimum" value={formatTemperature(selectedSummary.minTemperature)} />
-                        <StatCard compact label="Maximum" value={formatTemperature(selectedSummary.maxTemperature)} />
-                        <StatCard compact label="Temperature Swing" value={formatTemperature(selectedSummary.temperatureSwing)} />
-                        <StatCard compact label="Latest Packet" value={selectedAnalytics.latestReading ? `#${selectedAnalytics.latestReading.id}` : '—'} detail={formatDateTime(selectedAnalytics.latestReading?.receivedAt)} tone="muted" />
-                        <StatCard
-                          compact
-                          label="Warning Alerts"
-                          value={formatCount(selectedSummary.warningCount)}
-                          detail={selectedSummary.latestWarningAt ? `Most recent ${formatDateTime(selectedSummary.latestWarningAt)}` : 'No recent warnings'}
-                          tone="warning"
-                        />
-                        <StatCard
-                          compact
-                          label="Critical Alerts"
-                          value={formatCount(selectedSummary.criticalCount)}
-                          detail={selectedSummary.latestCriticalAt ? `Most recent ${formatDateTime(selectedSummary.latestCriticalAt)}` : 'No recent critical alerts'}
-                          tone="critical"
-                        />
-                      </Box>
-                    </div>
-                  </Box>
-                )}
-              </DashboardSection>
-
-              {/* Outside conditions */}
-              <DashboardSection title="Outside Conditions" eyebrow={selectedHive?.locationName || 'Selected Hive Location'}>
-                <Box
-                  className="outside-condition-grid compact-stat-grid"
-                  sx={{
-                    display: 'grid',
-                    gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' },
-                    gap: 1.5,
-                  }}
+              {/* Stale / freshness banner — sits above the summary strip
+                  so the user reads the freshness context BEFORE the
+                  numbers, not after. Only shown when the latest reading
+                  across the fleet is older than the stale threshold. */}
+              {globalStale && (
+                <div
+                  className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-amber/25 bg-amber/[0.06] px-3.5 py-2 text-[12.5px] text-amber-light"
+                  role="status"
                 >
-                  <StatCard compact label="Outside Temperature" value={formatTemperature(selectedExternalTemp)} detail={formatDateTime(selectedHive?.externalConditionAt)} tone="muted" />
-                  <StatCard compact label="Hive vs Outside" value={formatTemperature(selectedTempDelta)} detail="Latest internal minus outside" tone="muted" />
-                  <StatCard compact label="Humidity" value={formatPercent(selectedHive?.externalHumidityPct)} detail="Latest outside condition" tone="muted" />
-                  <StatCard compact label="Wind" value={formatWindMps(selectedHive?.externalWindMps)} detail="Latest sustained wind" tone="muted" />
-                  <StatCard compact label="Wind Gust" value={formatWindMps(selectedHive?.externalWindGustMps)} detail="Latest gust speed" tone="muted" />
-                  <StatCard compact label="Cloud Cover" value={formatPercent(selectedHive?.externalCloudPct)} detail="Latest cloud cover" tone="muted" />
-                  <StatCard compact label="Pressure" value={formatPressureHpa(selectedHive?.externalPressureHpa)} detail="Latest barometric pressure" tone="muted" />
-                  <StatCard compact label="Precipitation" value={formatPrecipMm(selectedHive?.externalPrecipMm)} detail="Latest bucket precipitation" tone="muted" />
-                </Box>
-              </DashboardSection>
+                  <span
+                    aria-hidden="true"
+                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber"
+                  />
+                  <span className="font-extrabold">Data stale</span>
+                  <span className="text-ink-secondary">
+                    · last reading {formatRelativeTime(globalStale.lastSeenIso)}
+                  </span>
+                </div>
+              )}
 
-              {/* Fleet comparison */}
-              <DashboardSection
-                title="24h Fleet Temperature"
-                eyebrow="Multi-Hive"
-                action={<button type="button" className="ghost-btn" onClick={() => navigate('/analytics')}>Open Analytics</button>}
-              >
-                <div className="analytics-card chart-card">
-                  <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '12px' }}>
-                    Internal temperature trends for active hives over the previous 24 hours, summarized from 10-minute readings.
-                  </div>
-                  {compareIds.length < 2 ? (
-                    <EmptyState
-                      title="Comparison unavailable"
-                      detail="The fleet graph appears when this account has at least two hives with data."
-                    />
-                  ) : fleetTimeline.error ? (
-                    <ErrorState message={fleetTimeline.error} />
-                  ) : (
-                    <Suspense fallback={<LoadingState label="Loading chart renderer…" />}>
-                      <MultiHiveComparisonChart
-                        comparison={fleetTimeline.data}
-                        range={DASHBOARD_RANGE}
-                        loading={fleetTimeline.loading}
-                        showBucketRangeInTooltip={false}
-                        smoothFleetDisplay
-                      />
-                    </Suspense>
-                  )}
+              <OperationsSummaryStrip rangeLabel={summaryRangeLabel} metrics={summaryMetrics} />
+
+              <DashboardSection title="Your Hives">
+                <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-[300px_minmax(0,1fr)]">
+                  <HivePicker
+                    hives={sortedHives}
+                    selectedHiveId={selectedHiveId}
+                    onSelect={setSelectedHiveId}
+                    globalStale={Boolean(globalStale)}
+                  />
+                  <SelectedHiveSection
+                    selectedHive={selectedHive}
+                    selectedId={selectedId}
+                    selectedTimeline={selectedTimeline}
+                    selectedAnalytics={selectedAnalytics}
+                    globalStale={Boolean(globalStale)}
+                  />
                 </div>
               </DashboardSection>
 
-              {/* Hive metrics table */}
-              <DashboardSection title="Hive Metrics" eyebrow="Dashboard 24h Summary">
-                <HiveMetricsTable hives={hives} />
-              </DashboardSection>
+              {/*
+                Fleet Overview area — the bottom half of the dashboard
+                reads as one grouped "fleet view" surface:
+
+                  [Selected Hive area]  →  mt-10 (40px)  →  [Fleet Trend]
+                                                            space-y-1 (4px)
+                                                            [Fleet Status]
+
+                The `mt-10` is intentionally larger than the standard
+                `mt-6` section break above (header→summary→Your Hives) so
+                the user reads the Fleet Overview as a distinct page
+                area, not just "the next section". The `space-y-1`
+                inside is intentionally tight — the Fleet Trend chart
+                and Fleet Status table read as related companion
+                elements (chart on top, table below), not as two
+                equal-weight sections. The visible gap from the chart
+                bottom to the Fleet Status heading is
+                space-y-1 (4px) + eyebrow height (14px) + mb-1 (4px)
+                ≈ 22px, which is the dashboard's "around 20px" target
+                for related-section gaps.
+
+                `FleetComparisonSection` no longer ships its own
+                `mt-6`, and the Fleet Status `DashboardSection` drops
+                its `className="mt-3"` override — the wrapper's
+                `mt-10` + `space-y-1` is the single source of truth
+                for this area's rhythm.
+
+                (Why a wrapper instead of `mt-*` on each child: it
+                keeps the related-section gap explicit and makes the
+                "grouped area" intent visible in the JSX.)
+              */}
+              <div className="mt-10 space-y-1">
+                <FleetComparisonSection
+                  fleetTimeline={fleetTimeline}
+                  hasMultipleHives={hives.length >= 2}
+                  range={DASHBOARD_RANGE}
+                />
+                <DashboardSection
+                  title="Fleet Status"
+                  eyebrow="All Hives"
+                >
+                  <HiveMetricsTable hives={sortedHives} />
+                </DashboardSection>
+              </div>
             </>
           )}
         </div>

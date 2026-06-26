@@ -3,23 +3,13 @@ import { EmptyState, LoadingState } from './StateBlocks';
 import {
   EXTERNAL_TEMPERATURE_COLOR,
   formatAggregationInterval,
+  formatChartTemperature,
   formatChartTime,
   formatChartTooltipTime,
   paddedTemperatureDomain,
 } from '../../utils/analyticsFormat';
-
-const chartSx = {
-  '& .MuiChartsAxis-line, & .MuiChartsAxis-tick': { stroke: 'rgba(255,255,255,0.18)' },
-  '& .MuiChartsAxis-tickLabel': { fill: 'rgba(255,255,255,0.58)', fontSize: 11 },
-  '& .MuiChartsLegend-label': { fill: 'rgba(255,255,255,0.72)' },
-  '& .MuiChartsGrid-line': { stroke: 'rgba(255,255,255,0.08)' },
-  '& .MuiChartsTooltip-paper': {
-    backgroundColor: '#151515',
-    border: '1px solid #2A2A2A',
-    color: '#fff',
-  },
-  '& .MuiChartsAxisHighlight-root': { stroke: 'rgba(245,185,66,0.38)' },
-};
+import { chartSx } from '../../utils/chartStyles';
+import { nullableNumber } from '../../utils/chartSeries';
 
 export default function TemperatureChart({ series, range, bucketSize, loading = false, height = 320 }) {
   if (loading) return <LoadingState label="Loading temperature trend…" />;
@@ -57,7 +47,7 @@ export default function TemperatureChart({ series, range, bucketSize, loading = 
         color: '#F5B942',
         showMark: showMarks,
         curve: 'monotoneX',
-        valueFormatter: formatFahrenheit,
+        valueFormatter: formatChartTemperature,
       },
       ...(hasExternal
         ? [
@@ -67,7 +57,7 @@ export default function TemperatureChart({ series, range, bucketSize, loading = 
             color: EXTERNAL_TEMPERATURE_COLOR,
             showMark: showMarks,
             curve: 'monotoneX',
-            valueFormatter: formatFahrenheit,
+            valueFormatter: formatChartTemperature,
           },
         ]
         : []),
@@ -79,7 +69,7 @@ export default function TemperatureChart({ series, range, bucketSize, loading = 
         color: '#FB7185',
         showMark: showMarks,
         curve: 'monotoneX',
-        valueFormatter: formatFahrenheit,
+        valueFormatter: formatChartTemperature,
       },
       {
         data: average,
@@ -87,7 +77,7 @@ export default function TemperatureChart({ series, range, bucketSize, loading = 
         color: '#F5B942',
         showMark: showMarks,
         curve: 'monotoneX',
-        valueFormatter: formatFahrenheit,
+        valueFormatter: formatChartTemperature,
       },
       {
         data: minimum,
@@ -95,7 +85,7 @@ export default function TemperatureChart({ series, range, bucketSize, loading = 
         color: '#60A5FA',
         showMark: showMarks,
         curve: 'monotoneX',
-        valueFormatter: formatFahrenheit,
+        valueFormatter: formatChartTemperature,
       },
       ...(hasExternal
         ? [
@@ -105,7 +95,7 @@ export default function TemperatureChart({ series, range, bucketSize, loading = 
             color: EXTERNAL_TEMPERATURE_COLOR,
             showMark: showMarks,
             curve: 'monotoneX',
-            valueFormatter: formatFahrenheit,
+            valueFormatter: formatChartTemperature,
           },
         ]
         : []),
@@ -143,7 +133,7 @@ export default function TemperatureChart({ series, range, bucketSize, loading = 
         slotProps={{ tooltip: { trigger: 'axis', anchor: 'pointer' } }}
         sx={chartSx}
       />
-      <div className="chart-meta">
+      <div className="-mt-1.5 text-[12px] leading-snug text-ink-muted">
         {isRawBucket
           ? 'Each point is one stored 10-minute internal or outside temperature bucket.'
           : `Each point is a ${formatAggregationInterval(bucketSize)}; source readings are stored in 10-minute ingest buckets and outside temperature is averaged across matching weather buckets.`}
@@ -151,14 +141,4 @@ export default function TemperatureChart({ series, range, bucketSize, loading = 
       </div>
     </>
   );
-}
-
-function nullableNumber(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
-function formatFahrenheit(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? `${n.toFixed(1)}°F` : 'No data';
 }

@@ -76,6 +76,20 @@ exports.fetchCurrentForDevice = async ({ deviceId }) => {
   return fetchCurrentForLocation({ locationId: row.location_id });
 };
 
+/**
+ * Direct fetch flow for callers that already have a locationId (e.g. the
+ * demo tick, which iterates over configured locations). Accepts an optional
+ * `now` (Date or ISO string) so the caller can target a specific 10-minute
+ * bucket instead of "now". When `now` is omitted, the current wall clock is
+ * used (matching fetchCurrentForHive / fetchCurrentForDevice).
+ */
+exports.fetchCurrentForLocation = async function fetchCurrentForLocationExport({
+  locationId,
+  now = null,
+} = {}) {
+  return fetchCurrentForLocation({ locationId, now });
+};
+
 exports.getLatestForHive = async ({ beekeeperId, hiveId }) => {
   const bId = toPositiveInt(beekeeperId, "beekeeperId");
   const hId = toPositiveInt(hiveId, "hiveId");
@@ -125,13 +139,13 @@ exports.getForHiveSince = async ({ beekeeperId, hiveId, since, until, limit, ord
 /* Core fetch + upsert                                                         */
 /* ========================================================================== */
 
-async function fetchCurrentForLocation({ locationId }) {
+async function fetchCurrentForLocation({ locationId, now = null }) {
   const locId = toPositiveInt(locationId, "locationId");
 
   const coords = await locationsRepo.getCoordsById({ locationId: locId });
   if (!coords) throw notFound("Location not found");
 
-  const nowBucket = floorToTenMinutesUtc(new Date());
+  const nowBucket = floorToTenMinutesUtc(resolveNow(now));
 
   /*
    * Guard against repeated upstream calls within the same 10-minute bucket.
@@ -155,6 +169,7 @@ async function fetchCurrentForLocation({ locationId }) {
     const args = mapOpenWeatherToUpsertArgs({
       locationId: locId,
       payload,
+      bucketAt: nowBucket,
     });
 
     return await externalConditionsRepo.upsert(args);
@@ -230,13 +245,15 @@ async function fetchOpenWeatherOneCall({ lat, lon }) {
 /* Mapping                                                                     */
 /* ========================================================================== */
 
-function mapOpenWeatherToUpsertArgs({ locationId, payload }) {
+function mapOpenWeatherToUpsertArgs({ locationId, payload, bucketAt }) {
   const cur = payload?.current || {};
 
   const dt = normalizeNumber(cur.dt);
-  const bucketAt = dt
-    ? floorToTenMinutesUtc(new Date(dt * 1000))
-    : floorToTenMinutesUtc(new Date());
+  const resolvedBucketAt = bucketAt
+    ? new Date(bucketAt)
+    : dt
+      ? floorToTenMinutesUtc(new Date(dt * 1000))
+      : floorToTenMinutesUtc(new Date());
 
   /*
    * Temperature is stored exactly as returned by OpenWeather for the selected
@@ -266,7 +283,7 @@ function mapOpenWeatherToUpsertArgs({ locationId, payload }) {
 
   return {
     locationId,
-    bucketAt,
+    bucketAt: resolvedBucketAt,
     provider: "openweather",
     status: "success",
     errorMessage: null,
@@ -336,6 +353,17 @@ function normalizeOrder(value) {
 function floorToTenMinutesUtc(date) {
   const ms = date.getTime();
   return new Date(Math.floor(ms / TEN_MIN_MS) * TEN_MIN_MS);
+}
+
+function resolveNow(now) {
+  if (now === null || now === undefined) {
+    return new Date();
+  }
+  const date = now instanceof Date ? now : new Date(now);
+  if (Number.isNaN(date.getTime())) {
+    throw badRequest("now must be a valid date");
+  }
+  return date;
 }
 
 function normalizeNumber(value) {

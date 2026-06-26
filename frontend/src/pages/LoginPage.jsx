@@ -5,6 +5,10 @@ import { apiFetch, setCsrfToken, setCurrentUser } from '../api';
 const SHOW_DEMO_LOGIN = import.meta.env.VITE_SHOW_DEMO_LOGIN === 'true';
 const DEMO_USERNAME = import.meta.env.VITE_DEMO_USERNAME || '';
 
+const fieldLabelClass = 'mb-1.5 block text-[11px] font-bold uppercase tracking-[0.08em] text-ink-secondary';
+const inputClass = 'w-full rounded-[10px] border border-line bg-white/[0.05] px-3.5 py-2.5 text-sm text-white outline-none transition placeholder:text-ink-muted focus:border-amber focus:bg-white/[0.08]';
+const primaryBtnClass = 'flex w-full cursor-pointer items-center justify-center gap-2 rounded-[10px] border-none bg-amber px-3.5 py-3.5 text-sm font-bold text-navy transition hover:bg-amber-light disabled:cursor-not-allowed disabled:opacity-60';
+
 function ForgotPasswordModal({ onClose }) {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,22 +32,15 @@ function ForgotPasswordModal({ onClose }) {
 
   return (
     <div
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 100, padding: '24px', animation: 'fadeIn 0.15s ease',
-      }}
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-6 animate-fade-in"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div style={{
-        background: 'var(--surface-elevated)', border: '1px solid var(--border)', borderRadius: '16px', padding: '32px',
-        width: '100%', maxWidth: '400px',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-        animation: 'fadeIn 0.2s ease',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <div style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text-primary)' }}>Reset Password</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}>
+      <div
+        className="w-full max-w-[400px] rounded-lg border border-line bg-surface-elevated p-8 shadow-card-lg animate-fade-in"
+      >
+        <div className="mb-5 flex items-center justify-between">
+          <div className="text-[17px] font-extrabold text-white">Reset Password</div>
+          <button onClick={onClose} className="flex cursor-pointer items-center border-none bg-none text-[#94a3b8]">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
             </svg>
@@ -52,28 +49,28 @@ function ForgotPasswordModal({ onClose }) {
 
         {status === 'success' ? (
           <div>
-            <div style={{ padding: '14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', marginBottom: '20px', color: '#16a34a', fontSize: '14px', fontWeight: 500 }}>
+            <div className="mb-5 rounded-md border border-green-200 bg-green-50 p-3.5 text-sm font-medium text-green-700">
               If an account exists for that email, a reset link has been sent.
             </div>
             <button
               onClick={onClose}
-              style={{ width: '100%', padding: '10px', background: 'var(--amber)', color: '#050505', border: 'none', borderRadius: '10px', fontWeight: 800, fontSize: '14px', cursor: 'pointer' }}
+              className="w-full cursor-pointer rounded-[10px] border-none bg-amber px-2.5 py-2.5 text-sm font-extrabold text-navy"
             >
               Back to Login
             </button>
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: 1.5 }}>
+            <p className="mb-5 text-[13px] leading-[1.5] text-ink-secondary">
               Enter your email address and we'll send you a link to reset your password.
             </p>
             {status === 'error' && (
-              <div style={{ marginBottom: '14px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#dc2626', fontSize: '13px' }}>
+              <div className="mb-3.5 rounded-md border border-red-200 bg-red-50 p-2.5 text-[13px] text-red-700">
                 Something went wrong. Please try again.
               </div>
             )}
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '7px', fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            <div className="mb-5">
+              <label className={fieldLabelClass}>
                 Email Address
               </label>
               <input
@@ -82,21 +79,14 @@ function ForgotPasswordModal({ onClose }) {
                 onChange={e => setEmail(e.target.value)}
                 required
                 placeholder="your@email.com"
-                style={{
-                  width: '100%', padding: '11px 14px',
-                  border: '1.5px solid #e2e8f0', borderRadius: '10px',
-                  fontSize: '14px', color: 'var(--text-primary)', background: 'rgba(255,255,255,0.05)',
-                  outline: 'none', fontFamily: 'inherit',
-                }}
-                onFocus={e => { e.target.style.borderColor = 'var(--amber)'; e.target.style.background = 'rgba(255,255,255,0.08)'; }}
-                onBlur={e => { e.target.style.borderColor = '#e2e8f0'; e.target.style.background = 'rgba(255,255,255,0.05)'; }}
+                className={inputClass}
               />
             </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button type="button" onClick={onClose} style={{ flex: 1, padding: '10px', border: '1.5px solid var(--border)', borderRadius: '10px', background: 'rgba(255,255,255,0.05)', fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+            <div className="flex gap-2.5">
+              <button type="button" onClick={onClose} className="flex-1 cursor-pointer rounded-[10px] border border-line bg-white/[0.05] px-2.5 py-2.5 text-sm font-semibold text-ink-secondary">
                 Cancel
               </button>
-              <button type="submit" disabled={loading} style={{ flex: 1, padding: '10px', border: 'none', borderRadius: '10px', background: loading ? '#555' : 'var(--amber)', color: '#050505', fontSize: '14px', fontWeight: 800, cursor: loading ? 'not-allowed' : 'pointer' }}>
+              <button type="submit" disabled={loading} className="flex-1 cursor-pointer rounded-[10px] border-none bg-amber px-2.5 py-2.5 text-sm font-extrabold text-navy disabled:cursor-not-allowed">
                 {loading ? 'Sending…' : 'Send Reset Link'}
               </button>
             </div>
@@ -161,34 +151,26 @@ export default function LoginPage() {
   };
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'radial-gradient(circle at top right, rgba(245,185,66,0.12), transparent 30rem), var(--bg)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '24px',
-      fontFamily: "'DM Sans', system-ui, sans-serif",
-    }}>
+    <div
+      className="flex min-h-screen items-center justify-center bg-bg p-6 font-sans"
+      style={{ background: 'radial-gradient(circle at top right, rgba(245,185,66,0.12), transparent 30rem), #050505' }}
+    >
       {showForgotPassword && <ForgotPasswordModal onClose={() => setShowForgotPassword(false)} />}
 
-      <div style={{ width: '100%', maxWidth: '420px', animation: 'fadeIn 0.4s ease' }}>
+      <div className="w-full max-w-[420px] animate-fade-in">
 
         {/* Brand header */}
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-            <div style={{
-              width: '48px', height: '48px',
-              background: 'var(--amber)',
-              borderRadius: '14px',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
+        <div className="mb-8 text-center">
+          <div className="mb-2 inline-flex items-center gap-3">
+            <div
+              className="flex h-12 w-12 items-center justify-center rounded-[14px] bg-amber"
+            >
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
                 <path d="M12 2C8 2 5 5 5 9c0 2.5 1.2 4.7 3 6.1V20a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-4.9c1.8-1.4 3-3.6 3-6.1 0-4-3-7-7-7z" fill="white" opacity="0.95" />
               </svg>
             </div>
-            <div style={{ textAlign: 'left' }}>
-              <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1, letterSpacing: '-0.02em' }}>
+            <div className="text-left">
+              <div className="text-[28px] font-extrabold leading-[1.1] tracking-[-0.02em] text-white">
                 BeeKeepr
               </div>
             </div>
@@ -196,27 +178,20 @@ export default function LoginPage() {
         </div>
 
         {/* Login card */}
-        <div style={{
-          background: 'var(--surface-elevated)',
-          border: '1px solid var(--border)',
-          borderRadius: '16px',
-          boxShadow: 'var(--shadow-lg)',
-          overflow: 'hidden',
-        }}>
+        <div className="overflow-hidden rounded-lg border border-line bg-surface-elevated shadow-card-lg">
           {/* Accent bar */}
-          <div style={{ height: '4px', background: 'linear-gradient(90deg, var(--navy) 0%, var(--amber) 100%)' }} />
+          <div className="h-1" style={{ background: 'linear-gradient(90deg, #050505 0%, #f5b942 100%)' }} />
 
-          <div style={{ padding: '36px 36px 32px' }}>
+          <div className="px-9 pt-9 pb-8">
 
             {/* Sign-up link */}
-            <div style={{ marginBottom: '24px' }}>
-              <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+            <div className="mb-6">
+              <div className="text-[13px] text-ink-muted">
                 Don't have an account?{' '}
                 <Link
                   to="/signup"
-                  style={{ color: 'var(--amber)', fontWeight: 600, textDecoration: 'none' }}
-                  onMouseEnter={e => e.target.style.opacity = '0.75'}
-                  onMouseLeave={e => e.target.style.opacity = '1'}
+                  className="font-semibold text-amber transition hover:opacity-75"
+                  style={{ textDecoration: 'none' }}
                 >
                   Sign up
                 </Link>
@@ -225,28 +200,24 @@ export default function LoginPage() {
 
             {/* Demo access */}
             {SHOW_DEMO_LOGIN && (
-              <div style={{
-                marginBottom: '22px',
-                padding: '14px',
-                border: '1px solid rgba(245,185,66,0.35)',
-                borderRadius: '14px',
-                background: 'rgba(245,185,66,0.08)',
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              <div
+                className="mb-[22px] rounded-md border border-amber/35 bg-amber/10 p-3.5"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div style={{ color: 'var(--amber)', fontSize: '12px', fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    <div className="text-[12px] font-black uppercase tracking-[0.08em] text-amber">
                       Demo Account
                     </div>
-                    <div style={{ marginTop: '4px', color: 'var(--text-secondary)', fontSize: '13px', lineHeight: 1.5 }}>
+                    <div className="mt-1 text-[13px] leading-[1.5] text-ink-secondary">
                       Use the read-only demo account to explore BeeKeepr with sample hive data.
                     </div>
                   </div>
                   {demoConfigured && (
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={loginWithDemoAccount}
-                        className="primary-btn"
+                        className="cursor-pointer rounded-pill border-none bg-amber px-3.5 py-2.5 text-[12px] font-black text-navy disabled:cursor-not-allowed disabled:opacity-55"
                         disabled={loading}
                       >
                         Log in demo
@@ -259,19 +230,7 @@ export default function LoginPage() {
 
             {/* Error banner */}
             {error && (
-              <div style={{
-                marginBottom: '20px',
-                padding: '12px 14px',
-                background: '#fef2f2',
-                border: '1px solid #fecaca',
-                borderRadius: '10px',
-                color: '#dc2626',
-                fontSize: '13px',
-                fontWeight: 500,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}>
+              <div className="mb-5 flex items-center gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-[13px] font-medium text-red-700">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
@@ -282,16 +241,12 @@ export default function LoginPage() {
             <form onSubmit={handleLogin}>
 
               {/* Identifier */}
-              <div style={{ marginBottom: '18px' }}>
-                <label style={{
-                  display: 'block', marginBottom: '7px',
-                  fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)',
-                  letterSpacing: '0.08em', textTransform: 'uppercase',
-                }}>
+              <div className="mb-[18px]">
+                <label className={fieldLabelClass}>
                   Email or Username
                 </label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                       <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
                       <polyline points="22,6 12,13 2,6" />
@@ -304,29 +259,18 @@ export default function LoginPage() {
                     value={identifier}
                     onChange={e => setIdentifier(e.target.value)}
                     required
-                    style={{
-                      width: '100%', padding: '11px 14px 11px 40px',
-                      border: '1.5px solid var(--border)', borderRadius: '10px',
-                      fontSize: '14px', color: 'var(--text-primary)', background: 'rgba(255,255,255,0.05)',
-                      outline: 'none', transition: 'border-color 0.15s, background 0.15s',
-                    }}
-                    onFocus={e => { e.target.style.borderColor = 'var(--amber)'; e.target.style.background = 'rgba(255,255,255,0.08)'; }}
-                    onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.background = 'rgba(255,255,255,0.05)'; }}
+                    className={`${inputClass} pl-10`}
                   />
                 </div>
               </div>
 
               {/* Password */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  display: 'block', marginBottom: '7px',
-                  fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)',
-                  letterSpacing: '0.08em', textTransform: 'uppercase',
-                }}>
+              <div className="mb-5">
+                <label className={fieldLabelClass}>
                   Password
                 </label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                       <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                       <path d="M7 11V7a5 5 0 0 1 10 0v4" />
@@ -338,39 +282,27 @@ export default function LoginPage() {
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     required
-                    style={{
-                      width: '100%', padding: '11px 14px 11px 40px',
-                      border: '1.5px solid var(--border)', borderRadius: '10px',
-                      fontSize: '14px', color: 'var(--text-primary)', background: 'rgba(255,255,255,0.05)',
-                      outline: 'none', transition: 'border-color 0.15s, background 0.15s',
-                    }}
-                    onFocus={e => { e.target.style.borderColor = 'var(--amber)'; e.target.style.background = 'rgba(255,255,255,0.08)'; }}
-                    onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.background = 'rgba(255,255,255,0.05)'; }}
+                    className={`${inputClass} pl-10`}
                   />
                 </div>
               </div>
 
               {/* Account options */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500 }}>
+              <div className="mb-6 flex items-center justify-between">
+                <label className="flex cursor-pointer items-center gap-2 text-[13px] font-medium text-ink-secondary">
                   <input
                     type="checkbox"
                     checked={remember}
                     onChange={e => setRemember(e.target.checked)}
-                    style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: 'var(--navy)' }}
+                    className="h-[15px] w-[15px] cursor-pointer"
+                    style={{ accentColor: '#050505' }}
                   />
                   Remember me
                 </label>
                 <button
                   type="button"
                   onClick={() => setShowForgotPassword(true)}
-                  style={{
-                    background: 'none', border: 'none', padding: 0,
-                    fontSize: '13px', fontWeight: 600, color: 'var(--amber)',
-                    cursor: 'pointer', transition: 'opacity 0.15s', fontFamily: 'inherit',
-                  }}
-                  onMouseEnter={e => e.target.style.opacity = '0.75'}
-                  onMouseLeave={e => e.target.style.opacity = '1'}
+                  className="cursor-pointer border-none bg-transparent p-0 text-[13px] font-semibold text-amber transition hover:opacity-75"
                 >
                   Forgot password?
                 </button>
@@ -380,21 +312,11 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                style={{
-                  width: '100%', padding: '13px',
-                  background: loading ? '#555' : 'var(--amber)',
-                  color: '#050505', border: 'none', borderRadius: '10px',
-                  fontWeight: 700, fontSize: '14px',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                  transition: 'background 0.15s', letterSpacing: '0.01em',
-                }}
-                onMouseEnter={e => { if (!loading) e.currentTarget.style.background = 'var(--amber-light)'; }}
-                onMouseLeave={e => { if (!loading) e.currentTarget.style.background = 'var(--amber)'; }}
+                className={primaryBtnClass}
               >
                 {loading ? (
                   <>
-                    <span style={{ animation: 'pulse 1s infinite', display: 'inline-block' }}>●</span>
+                    <span className="inline-block animate-pulse">●</span>
                     Signing in…
                   </>
                 ) : (
