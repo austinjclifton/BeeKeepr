@@ -65,3 +65,82 @@ export const FLEET_HIVE_COLORS = [
 export function getFleetHiveColor(index) {
   return FLEET_HIVE_COLORS[index % FLEET_HIVE_COLORS.length];
 }
+
+/**
+ * Derive a compact, human-readable short label from a full location
+ * name. Used by the fleet comparison chart to prefix legend/tooltip
+ * labels with the yard so hives from the same location group together
+ * visually and at a glance.
+ *
+ * Rules:
+ *   - Trim and collapse internal whitespace.
+ *   - Strip a trailing "Demo Yard" suffix (with optional surrounding
+ *     whitespace) — the demo accounts all carry it and it adds nothing
+ *     to a short label.
+ *   - Take the first two whitespace-delimited words so the result stays
+ *     compact even when the remaining name is long.
+ *   - Falls back to the original string when it's already short, and
+ *     to an empty string when the input is empty/null.
+ *
+ * Examples:
+ *   "Blue Ridge Appalachia Demo Yard" → "Blue Ridge"
+ *   "Rochester Demo Yard"            → "Rochester"
+ *   "Central Park"                   → "Central Park"
+ *   "Pisgah"                         → "Pisgah"
+ */
+export function shortLocationName(name) {
+  if (typeof name !== 'string') return '';
+  const cleaned = name.trim().replace(/\s+/g, ' ');
+  if (!cleaned) return '';
+  const withoutYard = cleaned.replace(/\s*Demo Yard\s*$/i, '').trim();
+  if (!withoutYard) return cleaned;
+  const words = withoutYard.split(' ');
+  return words.slice(0, 2).join(' ');
+}
+
+/**
+ * Build the structured display payload used by the fleet chart legend
+ * pills and the chart tooltip row. Returns the hive's display name and
+ * the short location label as separate fields so callers can stack
+ * them as two visual lines (name on top, location below in muted
+ * text) instead of gluing them together with a separator.
+ *
+ * Fallback chain for `name`: trim of `hive.name`, then `Hive <id>`,
+ * then an empty string.
+ *
+ * `locationName` is the short form (see `shortLocationName`) and may
+ * be the empty string when the hive has no location attached.
+ */
+export function getFleetHiveDisplay(hive) {
+  const name = (hive?.name || '').trim()
+    || (hive?.hiveId != null ? `Hive ${hive.hiveId}` : '');
+  const locationName = shortLocationName(hive?.locationName);
+  return { name, locationName };
+}
+
+/**
+ * Stable sort for fleet chart hives. Order is:
+ *   1. `locationName` ascending (locale-aware); empty/null sent to the end
+ *      via the '\uFFFF' sentinel so hives with a real location come first.
+ *   2. `name` ascending (locale-aware).
+ *   3. Hive id ascending as a final deterministic tiebreaker.
+ *
+ * The chart applies `getFleetHiveColor(index)` to the sorted array, so
+ * hives in the same yard end up adjacent in the palette — which reads
+ * as a coherent color group in the legend.
+ */
+export function sortFleetHives(hives) {
+  if (!Array.isArray(hives)) return [];
+  const NO_LOCATION = '\uFFFF';
+  return [...hives].sort((a, b) => {
+    const aLoc = (a?.locationName || '').trim() || NO_LOCATION;
+    const bLoc = (b?.locationName || '').trim() || NO_LOCATION;
+    if (aLoc !== bLoc) return aLoc.localeCompare(bLoc);
+    const aName = (a?.name || '').trim();
+    const bName = (b?.name || '').trim();
+    if (aName !== bName) return aName.localeCompare(bName);
+    const aId = Number(a?.hiveId ?? a?.id) || 0;
+    const bId = Number(b?.hiveId ?? b?.id) || 0;
+    return aId - bId;
+  });
+}

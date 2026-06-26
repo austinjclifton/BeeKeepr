@@ -126,17 +126,10 @@ export default function OperationsSummaryStrip({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-lg border border-line bg-surface-elevated shadow-card-sm ${className}`}
+      className={`overflow-hidden rounded-lg border border-line bg-surface-elevated shadow-card-sm ${className}`}
       role="group"
       aria-label={rangeLabel ? `Operations summary (${rangeLabel})` : 'Operations summary'}
     >
-      {/* Thin amber accent line along the top edge — a quiet nod to
-          the rest of the design system without dominating. */}
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-amber/60"
-      />
-
       <div
         data-ops-strip
         className="grid grid-cols-2 sm:grid-cols-4"

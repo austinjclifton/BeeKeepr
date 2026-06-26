@@ -123,6 +123,24 @@ export default function Dashboard() {
     activeAlertCount,
   });
 
+  // Location lookup used by the fleet comparison chart. The fleet
+  // temperature API (`getDashboardFleetTemperature24h`) doesn't return
+  // `locationName` on each hive, but `useHiveStatus` already loaded the
+  // same hives with their location attached — we thread that map down
+  // to FleetComparisonSection so the chart can group series by yard
+  // and prefix legend/tooltip labels with a short location.
+  const hiveLocations = useMemo(() => {
+    const map = new Map();
+    if (!Array.isArray(hives)) return map;
+    for (const hive of hives) {
+      const id = getHiveId(hive);
+      if (id == null) continue;
+      const name = (hive?.locationName || '').trim();
+      if (name) map.set(id, name);
+    }
+    return map;
+  }, [hives]);
+
   // Count unresolved alerts.
   useEffect(() => {
     let cancelled = false;
@@ -145,11 +163,11 @@ export default function Dashboard() {
   }, [authReady, authError]);
 
   return (
-    <div className="app-shell flex min-h-screen" data-debug-dashboard>
+    <div className="app-shell flex min-h-screen">
       <Navigation />
       <main className="flex-1 min-w-0 overflow-auto">
         <div className="mx-auto w-full max-w-content px-7 py-7">
-          <header className="mb-6">
+          <header className="mb-8">
             <div className="min-w-0">
               <h1 className="text-[clamp(26px,4vw,42px)] font-black leading-none text-white">
                 Operations Dashboard
@@ -195,8 +213,8 @@ export default function Dashboard() {
 
               <OperationsSummaryStrip rangeLabel={summaryRangeLabel} metrics={summaryMetrics} />
 
-              <DashboardSection title="Your Hives">
-                <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-[300px_minmax(0,1fr)]">
+              <DashboardSection title="Your Hives" className="mt-10">
+                <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
                   <HivePicker
                     hives={sortedHives}
                     selectedHiveId={selectedHiveId}
@@ -214,49 +232,32 @@ export default function Dashboard() {
               </DashboardSection>
 
               {/*
-                Fleet Overview area — the bottom half of the dashboard
-                reads as one grouped "fleet view" surface:
-
-                  [Selected Hive area]  →  mt-10 (40px)  →  [Fleet Trend]
-                                                            space-y-1 (4px)
-                                                            [Fleet Status]
-
-                The `mt-10` is intentionally larger than the standard
-                `mt-6` section break above (header→summary→Your Hives) so
-                the user reads the Fleet Overview as a distinct page
-                area, not just "the next section". The `space-y-1`
-                inside is intentionally tight — the Fleet Trend chart
-                and Fleet Status table read as related companion
-                elements (chart on top, table below), not as two
-                equal-weight sections. The visible gap from the chart
-                bottom to the Fleet Status heading is
-                space-y-1 (4px) + eyebrow height (14px) + mb-1 (4px)
-                ≈ 22px, which is the dashboard's "around 20px" target
-                for related-section gaps.
-
-                `FleetComparisonSection` no longer ships its own
-                `mt-6`, and the Fleet Status `DashboardSection` drops
-                its `className="mt-3"` override — the wrapper's
-                `mt-10` + `space-y-1` is the single source of truth
-                for this area's rhythm.
-
-                (Why a wrapper instead of `mt-*` on each child: it
-                keeps the related-section gap explicit and makes the
-                "grouped area" intent visible in the JSX.)
+                Fleet Overview area — the bottom half of the dashboard.
+                Fleet Trend uses `mt-10` to match the page's 40px
+                section rhythm; Fleet Status uses `mt-0` to sit flush
+                against the bottom of the fleet graph (the tighter
+                gap there keeps the table visually anchored to its
+                chart, since the chart already provides the breathing
+                room).
               */}
-              <div className="mt-10 space-y-1">
-                <FleetComparisonSection
-                  fleetTimeline={fleetTimeline}
-                  hasMultipleHives={hives.length >= 2}
-                  range={DASHBOARD_RANGE}
-                />
-                <DashboardSection
-                  title="Fleet Status"
-                  eyebrow="All Hives"
-                >
-                  <HiveMetricsTable hives={sortedHives} />
-                </DashboardSection>
-              </div>
+              <FleetComparisonSection
+                fleetTimeline={fleetTimeline}
+                hasMultipleHives={hives.length >= 2}
+                range={DASHBOARD_RANGE}
+                hiveLocations={hiveLocations}
+                className="mt-10"
+              />
+              <DashboardSection
+                title="Fleet Status"
+                eyebrow="All Hives"
+                // No top margin — Fleet Status sits flush against the
+                // bottom of the fleet graph. DashboardSection's default
+                // `mt-10` is replaced entirely by this className (see
+                // DashboardSection.jsx for the override semantics).
+                className="mt-0"
+              >
+                <HiveMetricsTable hives={sortedHives} />
+              </DashboardSection>
             </>
           )}
         </div>

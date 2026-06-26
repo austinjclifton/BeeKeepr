@@ -177,12 +177,6 @@ export function formatAggregationInterval(bucketSize) {
   }[bucketSize] || 'chart bucket';
 }
 
-export function formatBucketRange(start, end, bucketSize) {
-  const startText = formatFullDateTime(start);
-  if (!end || bucketSize === '10m') return startText;
-  return `${startText} to ${formatFullDateTime(end)}`;
-}
-
 export function formatWindMps(value) {
   const n = Number(value);
   return Number.isFinite(n) ? `${n.toFixed(1)} m/s` : '—';

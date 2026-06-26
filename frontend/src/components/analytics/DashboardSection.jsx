@@ -8,8 +8,9 @@
  *
  * Top-spacing behavior
  * --------------------
- * Default top spacing is `mt-6` (24px) so every `DashboardSection` on
- * the page gets a consistent vertical break between sections.
+ * Default top spacing is `mt-8` (32px) so every `DashboardSection` on
+ * the page gets a consistent vertical break between sections, sitting
+ * in the dashboard's "around 28–36px" major-section target.
  *
  * Pass `className` to override the default. **Important:** in Tailwind's
  * generated CSS, `mt-6` is emitted *after* `mt-0`–`mt-5` in source
@@ -31,7 +32,7 @@ export default function DashboardSection({
   // `className` fully replaces the default `mt-6` when provided, so
   // callers can pin a section to any vertical position without the
   // default silently winning via CSS source order.
-  const sectionClass = className ?? 'mt-6';
+  const sectionClass = className ?? 'mt-8';
   return (
     <section className={sectionClass}>
       <div className="mb-3.5 flex flex-wrap items-center justify-between gap-4">

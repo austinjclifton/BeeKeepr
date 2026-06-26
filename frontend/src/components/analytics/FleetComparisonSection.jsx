@@ -1,6 +1,10 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import { EmptyState, ErrorState, LoadingState } from './StateBlocks';
-import { getFleetHiveColor } from '../../utils/chartStyles';
+import {
+  getFleetHiveColor,
+  getFleetHiveDisplay,
+  sortFleetHives,
+} from '../../utils/chartStyles';
 import { getHiveId } from '../../utils/analyticsFormat';
 
 const MultiHiveComparisonChart = lazy(() => import('./MultiHiveComparisonChart'));
@@ -22,14 +26,41 @@ const MultiHiveComparisonChart = lazy(() => import('./MultiHiveComparisonChart')
  *     the custom header legend above is now the source of truth.
  *   - The "Open Analytics" deep-link pill was removed earlier; the
  *     Analytics nav link in the sidebar is the discoverable entry point.
+ *   - Series order + legend/tooltip labels are grouped by yard: hives
+ *     from the same location appear adjacent in the chart and read as
+ *     "ShortLocation · HiveName" in both the legend pills and the
+ *     chart tooltip. The location context flows in via the
+ *     `hiveLocations` map supplied by the Dashboard page (the fleet
+ *     API itself doesn't return `locationName` per hive).
  */
 export default function FleetComparisonSection({
   fleetTimeline,
   hasMultipleHives,
   range,
+  hiveLocations,
+  className = '',
 }) {
-  const comparison = fleetTimeline.data;
-  const legendHives = comparison?.hives ?? [];
+  const rawComparison = fleetTimeline.data;
+
+  // Merge `hiveLocations` into each hive so downstream consumers
+  // (legend + chart) can group by yard. The fleet API doesn't return
+  // `locationName`; the dashboard already loaded it via `useHiveStatus`
+  // and threads it down as a Map<hiveId, locationName>.
+  const comparison = useMemo(() => {
+    if (!rawComparison) return rawComparison;
+    const hives = rawComparison.hives ?? [];
+    if (!hives.length || !hiveLocations || typeof hiveLocations.get !== 'function') {
+      return rawComparison;
+    }
+    const enriched = hives.map(hive => {
+      const id = getHiveId(hive);
+      const locationName = id != null ? hiveLocations.get(id) : null;
+      return locationName ? { ...hive, locationName } : hive;
+    });
+    return { ...rawComparison, hives: enriched };
+  }, [rawComparison, hiveLocations]);
+
+  const legendHives = sortFleetHives(comparison?.hives ?? []);
   const showChart = hasMultipleHives && !fleetTimeline.error;
 
   return (
@@ -44,7 +75,7 @@ export default function FleetComparisonSection({
     // wrapper with no dead space below. The StateBlock inside still
     // has its own `min-h-[220px]`, so empty / loading / error
     // states stay visually consistent.
-    <section>
+<section className={className}>
       <div className="mb-3.5 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1">
           <div className="mb-1 text-[11px] font-extrabold uppercase tracking-[0.08em] text-ink-muted">
@@ -75,7 +106,6 @@ export default function FleetComparisonSection({
               comparison={comparison}
               range={range}
               loading={fleetTimeline.loading}
-              showBucketRangeInTooltip={false}
               showFooter={false}
               smoothFleetDisplay
               hideLegend
@@ -110,24 +140,34 @@ function FleetLegend({ hives, hasExternal }) {
 
   return (
     <div
-      className="flex max-w-full flex-wrap items-center gap-x-3.5 gap-y-1.5 text-[12px] font-extrabold uppercase tracking-[0.06em] text-ink-secondary"
+      className="flex max-w-full flex-wrap items-center gap-x-3.5 gap-y-3 text-[12px] uppercase tracking-[0.06em] text-ink-secondary"
       aria-label="Fleet hive color legend"
     >
       {items.map(({ hive, index }) => {
         const id = getHiveId(hive);
-        const name = hive?.name || `Hive ${id}`;
+        const { name, locationName } = getFleetHiveDisplay(hive);
+        const hoverLabel = locationName ? `${locationName} · ${name}` : name;
         return (
           <span
             key={id}
             className="inline-flex items-center gap-1.5"
-            title={name}
+            title={hoverLabel}
           >
             <span
               aria-hidden="true"
-              className="h-1.5 w-3.5 shrink-0 rounded-full"
+              className="h-1.5 w-3.5 shrink-0 self-center rounded-full"
               style={{ backgroundColor: getFleetHiveColor(index) }}
             />
-            <span className="truncate">{name}</span>
+            <span className="flex min-w-0 flex-col leading-tight">
+              <span className="truncate font-extrabold text-ink-secondary">
+                {name}
+              </span>
+              {locationName && (
+                <span className="truncate text-[10px] tracking-[0.06em] text-ink-muted">
+                  {locationName}
+                </span>
+              )}
+            </span>
           </span>
         );
       })}

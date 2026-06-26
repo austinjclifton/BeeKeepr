@@ -1,20 +1,7 @@
-import Typography from '@mui/material/Typography';
 import { LineChart } from '@mui/x-charts/LineChart';
-import {
-  ChartsTooltipCell,
-  ChartsTooltipContainer,
-  ChartsTooltipPaper,
-  ChartsTooltipRow,
-  ChartsTooltipTable,
-  chartsTooltipClasses,
-  useAxesTooltip,
-} from '@mui/x-charts/ChartsTooltip';
-import { ChartsLabelMark } from '@mui/x-charts/ChartsLabel';
 import { EmptyState, LoadingState } from './StateBlocks';
 import {
   EXTERNAL_TEMPERATURE_COLOR,
-  formatAggregationInterval,
-  formatBucketRange,
   formatChartTemperature,
   formatChartTime,
   formatChartTooltipTime,
@@ -24,6 +11,7 @@ import {
 import {
   comparisonChartSx,
   getFleetHiveColor,
+  sortFleetHives,
 } from '../../utils/chartStyles';
 import { nullableNumber, parseChartTime, smoothSeries, sortPointsByBucketAt } from '../../utils/chartSeries';
 
@@ -35,7 +23,6 @@ export default function MultiHiveComparisonChart({
   // doesn't dwarf the selected-hive area above. The Analytics page
   // overrides this with `height={400}` — see Analytics.jsx.
   height = 300,
-  showBucketRangeInTooltip = true,
   showFooter = true,
   smoothFleetDisplay = false,
   smoothComparisonDisplay = false,
@@ -57,10 +44,16 @@ export default function MultiHiveComparisonChart({
 }) {
   if (loading) return <LoadingState label="Loading comparison…" />;
 
-  const hives = (comparison?.hives ?? []).map(hive => ({
+  // Group by yard so hives from the same location appear adjacent in
+  // the chart and the legend. `FleetComparisonSection` already sorts
+  // and merges `locationName` before passing `comparison` down, but
+  // re-sorting defensively here keeps the chart correct even if a
+  // future caller forgets to.
+  const hives = sortFleetHives(comparison?.hives ?? []).map(hive => ({
     ...hive,
     series: sortPointsByBucketAt(hive?.series ?? []),
   }));
+
   const externalSeries = sortPointsByBucketAt(comparison?.externalSeries ?? []);
   const isLocationComparison = comparison?.locationId != null;
   const hasExternalSeries = externalSeries.some(point =>
@@ -104,9 +97,6 @@ export default function MultiHiveComparisonChart({
     comparison?.mode !== 'dashboard';
   const useDisplaySmoothing = useDashboardFleetSmoothing || useComparisonSmoothing;
   const displayBucketSize = comparison?.bucketSize;
-  const displayReferenceLabel = useDisplaySmoothing
-    ? `${formatAggregationInterval(displayBucketSize)} avg`
-    : null;
   const smoothingOptions = getSmoothingOptions(displayBucketSize);
 
   const bucketTimes = Array.from(new Set(
@@ -119,7 +109,11 @@ export default function MultiHiveComparisonChart({
   const timestamps = bucketTimes.map(value => new Date(value));
   const domainStart = parseTimelineDate(comparison?.startAt);
   const domainEnd = parseTimelineDate(comparison?.endAt);
-  const tickEvery = Math.max(1, Math.ceil(timestamps.length / 8));
+  // X-axis tick spacing — same intent as the solo-hive chart.
+  // `tickLabelInterval` marks every Nth index as a label candidate;
+  // MUI space-filters the rest. Aim for ~29 candidates regardless of
+  // range length so the visible label count stays roughly 5.
+  const tickEvery = Math.max(1, Math.ceil(timestamps.length / 29));
   const showMarks = bucketTimes.length <= 36 && (hives.length + (hasExternalSeries ? 1 : 0)) <= 4;
   const allValues = [];
   const series = hives.map((hive, index) => {
@@ -135,20 +129,11 @@ export default function MultiHiveComparisonChart({
     allValues.push(...data, ...rawData);
     return {
       data,
-      label: hive.name || `Hive ${hive.hiveId}`,
+      label: (hive?.name || '').trim() || `Hive ${hive.hiveId}`,
       color: getFleetHiveColor(index),
       showMark: showMarks,
       curve: 'monotoneX',
-      valueFormatter: (value, context) => formatFahrenheitWithBucket(
-        value,
-        context,
-        bucketTimes,
-        displayBucketSize,
-        showBucketRangeInTooltip,
-        useDisplaySmoothing ? rawData : null,
-        displayReferenceLabel,
-        internalPrecision,
-      ),
+      valueFormatter: value => formatChartTemperature(value, internalPrecision),
     };
   });
 
@@ -169,16 +154,7 @@ export default function MultiHiveComparisonChart({
       color: EXTERNAL_TEMPERATURE_COLOR,
       showMark: showMarks,
       curve: 'monotoneX',
-      valueFormatter: (value, context) => formatFahrenheitWithBucket(
-        value,
-        context,
-        bucketTimes,
-        displayBucketSize,
-        showBucketRangeInTooltip,
-        useComparisonSmoothing ? data : null,
-        displayReferenceLabel,
-        externalPrecision,
-      ),
+      valueFormatter: value => formatChartTemperature(value, externalPrecision),
     });
   }
   const [yMin, yMax] = comparisonTemperatureDomain(allValues, comparison);
@@ -219,7 +195,12 @@ export default function MultiHiveComparisonChart({
         grid={{ horizontal: true, vertical: true }}
         axisHighlight={{ x: 'line' }}
         hideLegend={hideLegend}
-        slots={{ tooltip: SortedAxisTooltip }}
+        // No custom tooltip slot — fall through to MUI's default
+        // axis tooltip so the fleet chart reads identically to the
+        // dashboard's solo-hive 24h chart (`DashboardHiveTemperatureChart`).
+        // Both share the `chartSx`/`comparisonChartSx` styling so the
+        // tooltip paper, axis labels, and series marks render the same
+        // way in both charts.
         slotProps={{
           tooltip: { trigger: 'axis', anchor: 'pointer' },
           line: { strokeLinecap: 'round', strokeLinejoin: 'round' },
@@ -229,63 +210,13 @@ export default function MultiHiveComparisonChart({
       {showFooter && (
         <div className="-mt-1.5 text-[12px] leading-snug text-ink-muted">
           Source readings are stored in 10-minute ingest buckets.
-          {useDashboardFleetSmoothing ? ' Fleet overview lines use 10-minute display buckets with a 9-point trend average; bucket averages remain available in tooltips when they differ.' : ''}
-          {useComparisonSmoothing ? ' Multi-hive comparison lines are display-smoothed for the selected interval; bucket averages remain available in tooltips when they differ.' : ''}
+          {useDashboardFleetSmoothing ? ' Fleet overview lines use 10-minute display buckets with a 9-point trend average for visual clarity.' : ''}
+          {useComparisonSmoothing ? ' Multi-hive comparison lines are display-smoothed for the selected interval for visual clarity.' : ''}
           {comparison?.locationId ? ' External temperature for the selected location is overlaid when weather data is available.' : ''}
           {comparison?.locationId && !hasExternalSeries ? ' Outside conditions are unavailable for this location.' : ''}
         </div>
       )}
     </>
-  );
-}
-
-function SortedAxisTooltip(props) {
-  return (
-    <ChartsTooltipContainer {...props}>
-      <SortedAxisTooltipContent />
-    </ChartsTooltipContainer>
-  );
-}
-
-function SortedAxisTooltipContent() {
-  const tooltipData = useAxesTooltip();
-  if (tooltipData === null) return null;
-
-  return (
-    <ChartsTooltipPaper className={chartsTooltipClasses.paper}>
-      {tooltipData.map(({ axisId, mainAxis, axisValue, axisFormattedValue, seriesItems }) => (
-        <ChartsTooltipTable className={chartsTooltipClasses.table} key={axisId}>
-          {axisValue != null && !mainAxis.hideTooltip ? (
-            <Typography component="caption">{axisFormattedValue}</Typography>
-          ) : null}
-          <tbody>
-            {sortTooltipSeriesItems(seriesItems).map(({ color, formattedLabel, formattedValue, markType, seriesId }) => (
-              <ChartsTooltipRow className={chartsTooltipClasses.row} key={seriesId}>
-                <ChartsTooltipCell
-                  className={`${chartsTooltipClasses.labelCell} ${chartsTooltipClasses.cell}`}
-                  component="th"
-                >
-                  <div className={chartsTooltipClasses.markContainer}>
-                    <ChartsLabelMark
-                      type={markType}
-                      color={color}
-                      className={chartsTooltipClasses.mark}
-                    />
-                  </div>
-                  {formattedLabel || null}
-                </ChartsTooltipCell>
-                <ChartsTooltipCell
-                  className={`${chartsTooltipClasses.valueCell} ${chartsTooltipClasses.cell}`}
-                  component="td"
-                >
-                  {formattedValue}
-                </ChartsTooltipCell>
-              </ChartsTooltipRow>
-            ))}
-          </tbody>
-        </ChartsTooltipTable>
-      ))}
-    </ChartsTooltipPaper>
   );
 }
 
@@ -326,13 +257,32 @@ function toBucketValueMap(series, getValue, bucketSize) {
 }
 
 function comparisonTemperatureDomain(values, comparison) {
-  const baseDomain = paddedTemperatureDomain(values);
+  const isDashboardFleet =
+    comparison?.mode === 'dashboard' && comparison?.bucketSize === '10m';
 
-  if (comparison?.mode !== 'dashboard' || comparison?.bucketSize !== '10m') {
-    return baseDomain;
+  if (!isDashboardFleet) {
+    // Analytics page comparison — keep the existing wider padding so
+    // 1w/1m ranges don't get artificially compressed when readings
+    // happen to cluster.
+    return paddedTemperatureDomain(values);
   }
 
-  return expandDomainToMinSpan(baseDomain, 12);
+  // Dashboard fleet trend: tighter padding so a stable band of
+  // readings (e.g. all hives hovering 94-96°F) still shows the line
+  // variation. The actual min/max of the data still drives the
+  // domain — if a value drops to 90°F or climbs to 100°F, the y-axis
+  // expands to fit because the span grew, without compressing the
+  // rest of the chart.
+  const nums = values.map(Number).filter(Number.isFinite);
+  if (!nums.length) return paddedTemperatureDomain(values);
+  const min = Math.min(...nums);
+  const max = Math.max(...nums);
+  const span = max - min;
+  const pad = span === 0 ? 1.5 : Math.max(0.5, span * 0.1);
+  return [
+    Math.floor((min - pad) * 10) / 10,
+    Math.ceil((max + pad) * 10) / 10,
+  ];
 }
 
 function getSmoothingOptions(bucketSize) {
@@ -394,68 +344,4 @@ function normalizeBucketDate(date, bucketSize) {
 
   normalized.setUTCMinutes(Math.floor(normalized.getUTCMinutes() / 10) * 10, 0, 0);
   return normalized;
-}
-
-function sortTooltipSeriesItems(seriesItems) {
-  return seriesItems
-    .map((item, index) => ({ item, index }))
-    .filter(({ item }) => item.formattedValue != null)
-    .sort((left, right) => compareTooltipSeriesItems(left.item, right.item) || left.index - right.index)
-    .map(({ item }) => item);
-}
-
-function compareTooltipSeriesItems(left, right) {
-  const leftValue = sortableTemperature(left.value);
-  const rightValue = sortableTemperature(right.value);
-
-  if (leftValue == null && rightValue == null) return 0;
-  if (leftValue == null) return 1;
-  if (rightValue == null) return -1;
-  return rightValue - leftValue;
-}
-
-function sortableTemperature(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
-function formatFahrenheitWithBucket(
-  value,
-  context,
-  bucketTimes,
-  bucketSize,
-  showBucketRangeInTooltip,
-  rawData,
-  rawLabel,
-  precision = 'auto',
-) {
-  const rawValue = rawData?.[context?.dataIndex];
-  const base = formatFahrenheitWithRaw(value, rawValue, rawLabel, precision);
-  if (!showBucketRangeInTooltip) return base;
-  const bucketAt = bucketTimes?.[context?.dataIndex];
-  if (!bucketAt) return base;
-  const endAt = addBucketEnd(bucketAt, bucketSize);
-  return `${base} · ${formatBucketRange(bucketAt, endAt, bucketSize)}`;
-}
-
-function formatFahrenheitWithRaw(value, rawValue, rawLabel = 'raw', precision = 'auto') {
-  const base = formatChartTemperature(value, precision);
-  const display = sortableTemperature(value);
-  const raw = sortableTemperature(rawValue);
-  if (display == null || raw == null || Math.abs(display - raw) < 0.05) return base;
-  return `${base} trend · ${rawLabel} ${formatChartTemperature(raw, precision)}`;
-}
-
-function addBucketEnd(bucketAt, bucketSize) {
-  const d = new Date(bucketAt);
-  if (Number.isNaN(d.getTime())) return null;
-  const durations = {
-    '10m': 10 * 60 * 1000,
-    '30m': 30 * 60 * 1000,
-    hour: 60 * 60 * 1000,
-    '6h': 6 * 60 * 60 * 1000,
-    day: 24 * 60 * 60 * 1000,
-  };
-  const ms = durations[bucketSize];
-  return ms ? new Date(d.getTime() + ms).toISOString() : null;
 }

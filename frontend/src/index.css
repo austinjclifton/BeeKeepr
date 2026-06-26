@@ -13,35 +13,12 @@
    ────────────────────────────────────────────────────────── */
 
 /* ──────────────────────────────────────────────────────────
-   TEMPORARY DEBUG OUTLINES (dashboard bottom-half spacing).
-   Each colored outline marks a different element on the page
-   so the spacing fix is visually obvious in a screenshot. To
-   be removed once the spacing change is confirmed.
+   Bespoke visuals that don't fit Tailwind utilities:
+   - app-shell warm-corner radial background
+   - custom range slider thumb
+   - custom scrollbar
+   - base resets the Tailwind preflight doesn't cover
    ────────────────────────────────────────────────────────── */
-[data-debug-dashboard] section[aria-label="Selected hive detail"] {
-  outline: 2px solid #ef4444;
-  outline-offset: 2px;
-}
-[data-debug-dashboard] .mt-10.space-y-1 {
-  outline: 2px solid #3b82f6;
-  outline-offset: 2px;
-}
-[data-debug-dashboard] .mt-10.space-y-1 > section:first-child {
-  outline: 2px solid #22c55e;
-  outline-offset: 2px;
-}
-[data-debug-dashboard] .mt-10.space-y-1 > section:last-child {
-  outline: 2px solid #f59e0b;
-  outline-offset: 2px;
-}
-[data-debug-dashboard] .mt-10.space-y-1 svg {
-  outline: 1px dashed #a78bfa;
-  outline-offset: 1px;
-}
-[data-debug-dashboard] section[aria-label="Selected hive detail"] svg {
-  outline: 1px dashed #ec4899;
-  outline-offset: 1px;
-}
 
 @layer base {
   html {

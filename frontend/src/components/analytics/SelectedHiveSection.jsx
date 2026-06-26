@@ -53,29 +53,25 @@ export default function SelectedHiveSection({
       />
 
       {/*
-        The chart card used to ship with `min-h-[380px]`, which left
-        ~22px of dead space below the 280px chart SVG (the card is
-        380px tall, the chart fills 280px of it, so 100px of
-        card-internal space sits below the chart line). That dead
-        space showed up in the measured DOM as a 82px gap from the
-        selected hive chart SVG bottom to the Fleet Trend heading —
-        far more than the dashboard rhythm wants.
-
-        No `min-h` here: the card now sizes to its content
-        (header + 280px chart + 36px padding ≈ 374px natural). If
-        an empty/loading state ever needs a floor, the StateBlock
-        already ships its own `min-h-[220px]`, so the card never
-        collapses below a readable size.
+        Chart card padding is split intentionally: the header row
+        (title + legend) gets `px-4 pt-4 pb-3`, while the chart
+        viewport itself sits at `px-0 pb-2` so the line chart spans
+        the full card width with no parent padding eating plot
+        space. MUI's LineChart already reserves its own axis/labels
+        margins, so any extra parent padding would just shift the
+        chart canvas inward. Empty / loading states keep their own
+        internal `min-h-[220px]` so the card never collapses below
+        a readable size.
       */}
-      <div className="flex flex-col rounded-lg border border-line bg-surface-elevated p-[18px] shadow-card-sm">
-        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
+      <div className="flex flex-col overflow-hidden rounded-lg border border-line bg-surface-elevated shadow-card-sm">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2 px-4 pt-4 pb-3">
           <div className="min-w-0">
             {/* Small context line replaces the old full-width header
                 strip. Keeps the user oriented ("this panel is for
                 Hive X at Yard Y") without the redundant title + chip. */}
             {selectedHive && (
               <div
-                className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] font-extrabold uppercase leading-[1.2] tracking-[0.06em] text-ink-secondary"
+                className="mb-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[13px] font-extrabold uppercase leading-[1.2] tracking-[0.06em] text-ink-secondary"
                 aria-label={`Showing ${selectedName}${selectedLocationName ? ` at ${selectedLocationName}` : ''}`}
               >
                 <span className="truncate text-white">{selectedName}</span>
@@ -127,19 +123,21 @@ export default function SelectedHiveSection({
             </span>
           </div>
         </div>
-        {hasError ? (
-          <ErrorState
-            message={selectedAnalytics.error || selectedTimeline.error}
-          />
-        ) : (
-          <Suspense fallback={<LoadingState label="Loading chart renderer…" />}>
-            <DashboardHiveTemperatureChart
-              timeline={selectedTimeline.data}
-              hiveName={selectedName}
-              loading={selectedTimeline.loading}
+        <div className="px-0 pb-2">
+          {hasError ? (
+            <ErrorState
+              message={selectedAnalytics.error || selectedTimeline.error}
             />
-          </Suspense>
-        )}
+          ) : (
+            <Suspense fallback={<LoadingState label="Loading chart renderer…" />}>
+              <DashboardHiveTemperatureChart
+                timeline={selectedTimeline.data}
+                hiveName={selectedName}
+                loading={selectedTimeline.loading}
+              />
+            </Suspense>
+          )}
+        </div>
       </div>
     </section>
   );

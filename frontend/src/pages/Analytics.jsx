@@ -606,7 +606,6 @@ export default function Analytics() {
                           range={chartRange}
                           loading={comparison.loading}
                           height={400}
-                          showBucketRangeInTooltip={false}
                           smoothComparisonDisplay
                         />
                       )}
