@@ -160,10 +160,22 @@ export function buildHourlyTicks(start, end) {
  * window start/end, which may be e.g. `10:13 PM`. Tick marks (small
  * hash marks on the axis) still render on every whole hour; this
  * function only gates the text label.
+ *
+ * Accepts either a number (epoch ms) or a Date. MUI x-charts v8
+ * passes the value to axis `valueFormatter` as a Date on soft
+ * re-renders and as a raw epoch number from the `tickInterval` array
+ * on the initial mount — so we have to handle both. Using
+ * `Number.isFinite(value)` as the null-guard would silently reject
+ * every Date object (it does not coerce), which is what produced the
+ * "time labels render on hard refresh but vanish on soft refresh"
+ * symptom: hard refresh mounts the chart before MUI's internal time
+ * scale runs, so valueFormatter sees raw numbers; a soft refresh
+ * hands it already-converted Dates and the guard trips.
  */
 export function shouldLabelTick(value) {
-  if (!Number.isFinite(value)) return false;
-  const tickDate = new Date(value);
+  const ms = value instanceof Date ? value.getTime() : value;
+  if (!Number.isFinite(ms)) return false;
+  const tickDate = new Date(ms);
   return tickDate.getMinutes() === 0 && tickDate.getHours() % LABEL_EVERY_HOURS === 0;
 }
 

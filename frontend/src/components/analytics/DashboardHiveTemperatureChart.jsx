@@ -11,29 +11,26 @@ import {
 } from '../../utils/analyticsFormat';
 import {
   chartSx,
-  CHART_AXIS_LABEL_STYLE,
   CHART_AXIS_TICK_STYLE,
   buildHourlyTicks,
   shouldLabelTick,
 } from '../../utils/chartStyles';
 import { nullableNumber, sortPointsByBucketAt } from '../../utils/chartSeries';
 
-// `left` bumped to 84 — gives the bold y-axis tick labels like
-// `100°F` comfortable headroom. `bottom` reserves room for MUI's
-// single x-axis plus the bold axis-title label ("Bucket Start Time")
-// underneath it. We intentionally use MUI's real x-axis here, but
-// we control the tick positions ourselves via `tickInterval` so
-// refresh / hard-refresh / prod-build cannot change the cadence.
 const CHART_MARGINS = {
-  left: 84,
+  left: 72,
   right: 24,
   top: 16,
-  bottom: 60,
+  bottom: 42,
 };
 
 function toEpochMs(value) {
   const ms = value instanceof Date ? value.getTime() : new Date(value).getTime();
   return Number.isFinite(ms) ? ms : null;
+}
+
+function buildLabeledTimeTicks(start, end) {
+  return buildHourlyTicks(start, end).filter(tick => shouldLabelTick(tick));
 }
 
 export default function DashboardHiveTemperatureChart({
@@ -46,9 +43,6 @@ export default function DashboardHiveTemperatureChart({
 
   const points = sortPointsByBucketAt(timeline?.points ?? []);
 
-  // Build one aligned row array first so x-values and series values
-  // cannot drift. Bad bucket timestamps are dropped instead of sending
-  // NaN into MUI's time scale.
   const rows = points
     .map(point => ({
       x: toEpochMs(point.bucketAt),
@@ -76,25 +70,21 @@ export default function DashboardHiveTemperatureChart({
   const parsedDomainStart = parseTimelineDate(timeline?.startAt)?.getTime();
   const parsedDomainEnd = parseTimelineDate(timeline?.endAt)?.getTime();
 
-  // Prefer the API's declared 24h window so the chart scale stays
-  // anchored to the real bucket range, even if the first/last reading
-  // is a few minutes inside the window.
   const axisStart = Number.isFinite(parsedDomainStart) ? parsedDomainStart : xValues[0];
   const axisEnd = Number.isFinite(parsedDomainEnd)
     ? parsedDomainEnd
     : xValues[xValues.length - 1];
 
-  const hourlyTicks = buildHourlyTicks(axisStart, axisEnd);
+  const timeTicks = buildLabeledTimeTicks(axisStart, axisEnd);
   const [yMin, yMax] = paddedTemperatureDomain([...internal, ...outside]);
 
-  // Force a fresh MUI chart instance when the selected hive/window changes.
-  // This protects against stale internal axis state after reloads or hive swaps.
   const chartKey = [
     rows.length,
     axisStart,
     axisEnd,
     xValues[0],
     xValues[xValues.length - 1],
+    timeTicks.join(','),
   ].join(':');
 
   return (
@@ -110,37 +100,33 @@ export default function DashboardHiveTemperatureChart({
             scaleType: 'time',
             min: axisStart,
             max: axisEnd,
-            label: 'Bucket Start Time',
 
-            // Deterministic dashboard axis:
-            // - small MUI tick every hour
-            // - text label every 3 hours
-            // - first/last labels always included
-            tickInterval: hourlyTicks,
+            // Stable dashboard axis:
+            // MUI gets only the ticks that should have labels.
+            // No blank hourly labels, no raw start/end labels, no x-axis title
+            // competing for space during refresh.
+            tickInterval: timeTicks,
             valueFormatter: (value, context) => {
-              if (context.location !== 'tick') {
-                return formatChartTooltipTime(value);
+              const tickMs = toEpochMs(value);
+
+              if (context?.location !== 'tick') {
+                return formatChartTooltipTime(tickMs ?? value);
               }
 
-              return shouldLabelTick(value)
-                ? formatChartTime(value, '1d')
+              return Number.isFinite(tickMs)
+                ? formatChartTime(tickMs, '1d')
                 : '';
             },
             tickLabelStyle: CHART_AXIS_TICK_STYLE,
-            labelStyle: CHART_AXIS_LABEL_STYLE,
           },
         ]}
         yAxis={[
           {
-            label: 'Temperature (°F)',
-            // MUI x-charts v8 default yAxis.width is 45 — set it
-            // explicitly so bold y-axis labels never ellipsize.
             width: CHART_MARGINS.left,
             min: yMin,
             max: yMax,
             valueFormatter: value => `${value}°F`,
             tickLabelStyle: CHART_AXIS_TICK_STYLE,
-            labelStyle: CHART_AXIS_LABEL_STYLE,
           },
         ]}
         series={[

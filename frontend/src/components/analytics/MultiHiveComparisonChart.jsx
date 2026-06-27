@@ -20,20 +20,18 @@ import {
 } from '../../utils/chartStyles';
 import { nullableNumber, parseChartTime, smoothSeries, sortPointsByBucketAt } from '../../utils/chartSeries';
 
-// `left` bumped to 96 — the fleet chart's wider y-axis values like
-// `94.5°F` were ellipsizing at 72 because MUI's `shortenLabels`
-// measures available width off the axis config and reserves extra
-// room for the tick + gap. 96 leaves comfortable headroom for the
-// longest bold value at any domain / tick-spacing combo.
 const FLEET_COMPACT_LEFT_MARGIN = 96;
 const FLEET_COMPACT_RIGHT_MARGIN = 24;
-// `compact` used to drop axis titles entirely to reclaim vertical
-// plot space on the dashboard, but that made the unit ("°F") and
-// time semantics ("Bucket Start Time") invisible without a tooltip.
-// Now that titles are shown we still want a tighter bottom than the
-// Analytics chart's 64 — 56 leaves headroom for the bold label below
-// the hourly ticks without giving back the saved plot rows.
-const FLEET_COMPACT_BOTTOM_MARGIN = 56;
+const FLEET_COMPACT_BOTTOM_MARGIN = 42;
+
+function toEpochMs(value) {
+  const ms = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function buildLabeledTimeTicks(start, end) {
+  return buildHourlyTicks(start, end).filter(tick => shouldLabelTick(tick));
+}
 
 // Format a hive series label. When `labelMode === 'locationName'` and the
 // hive has a location, the label is prefixed with the short location name:
@@ -52,28 +50,14 @@ export default function MultiHiveComparisonChart({
   comparison,
   range,
   loading = false,
-  // Dashboard fleet overview wants a compact chart so the bottom half
-  // doesn't dwarf the selected-hive area above. Analytics overrides this
-  // with `height={400}`.
   height = 340,
   showFooter = true,
   smoothFleetDisplay = false,
   smoothComparisonDisplay = false,
-  // Dashboard renders its own header legend in the card chrome. Analytics
-  // keeps the built-in MUI legend.
   hideLegend = false,
-  // Dashboard fleet passes fixed precision so tooltip/readouts match the
-  // Fleet Status table. Analytics keeps the existing auto-trim behavior.
   internalPrecision = 'auto',
   externalPrecision = 'auto',
-  // 'name' matches Analytics. 'locationName' is used by the dashboard
-  // fleet card to disambiguate hives across yards.
   labelMode = 'name',
-  // Compact mode is dashboard-only. It keeps the axis titles (so the
-  // dashboard fleet chart matches the selected-hive chart and the
-  // Analytics fleet chart) but uses deterministic hourly x ticks and a
-  // tighter bottom margin to reclaim vertical plot space on the
-  // dashboard card.
   compact = false,
 }) {
   if (loading) return <LoadingState label="Loading comparison…" />;
@@ -150,21 +134,15 @@ export default function MultiHiveComparisonChart({
   const xValues = bucketTimes;
   const axisStart = Number.isFinite(domainStart) ? domainStart : xValues[0];
   const axisEnd = Number.isFinite(domainEnd) ? domainEnd : xValues[xValues.length - 1];
-  const hourlyTicks = compact ? buildHourlyTicks(axisStart, axisEnd) : undefined;
+  const timeTicks = compact ? buildLabeledTimeTicks(axisStart, axisEnd) : undefined;
 
-  // Force a fresh MUI chart instance whenever the underlying data shifts
-  // (different hives, different range, different bucket times). Without
-  // this, React reconciles the existing chart in place and any axis
-  // styling that MUI x-charts applies during the initial mount — including
-  // `tickLabelStyle` / `labelStyle` — can survive stale across re-renders,
-  // which is what produced the intermittent "x-axis not bold" symptom on
-  // the fleet chart. Mirrors DashboardHiveTemperatureChart's `chartKey`.
   const chartKey = [
     hives.length,
     axisStart,
     axisEnd,
     xValues[0],
     xValues[xValues.length - 1],
+    compact ? timeTicks?.join(',') : 'analytics',
   ].join(':');
 
   const showMarks = bucketTimes.length <= 36 && (hives.length + (hasExternalSeries ? 1 : 0)) <= 4;
@@ -232,37 +210,44 @@ export default function MultiHiveComparisonChart({
           scaleType: 'time',
           min: axisStart,
           max: axisEnd,
-          label: 'Bucket Start Time',
 
-          // Dashboard compact mode uses explicit hourly ticks so soft
-          // reloads, hard refreshes, and prod builds keep the same cadence.
-          // Exact edge times like 9:42 PM stay useful in tooltips, but the
-          // visible axis only labels clean 3-hour clock boundaries.
-          ...(compact ? { tickInterval: hourlyTicks } : {}),
+          // Compact dashboard mode gets only real visible time-label ticks.
+          // No blank hourly labels, no raw start/end labels, no x-axis title
+          // competing for space during refresh.
+          ...(compact
+            ? { tickInterval: timeTicks }
+            : {
+                label: 'Bucket Start Time',
+                labelStyle: CHART_AXIS_LABEL_STYLE,
+              }),
 
           valueFormatter: (value, context) => {
-            if (context.location !== 'tick') {
-              return formatChartTooltipTime(value);
+            const tickMs = toEpochMs(value);
+
+            if (context?.location !== 'tick') {
+              return formatChartTooltipTime(tickMs ?? value);
             }
 
             if (!compact) {
-              return formatChartTime(value, range);
+              return Number.isFinite(tickMs)
+                ? formatChartTime(tickMs, range)
+                : '';
             }
 
-            return shouldLabelTick(value)
-              ? formatChartTime(value, range)
+            return Number.isFinite(tickMs)
+              ? formatChartTime(tickMs, range)
               : '';
           },
           tickLabelStyle: CHART_AXIS_TICK_STYLE,
-          labelStyle: CHART_AXIS_LABEL_STYLE,
         }]}
         yAxis={[{
-          label: 'Temperature (°F)',
-          labelStyle: CHART_AXIS_LABEL_STYLE,
-          // MUI x-charts v8 default yAxis.width is 45 — not driven by
-          // margin.left. Bump it explicitly so bold labels like `94.5°F`
-          // have enough room and MUI's `shortenLabels` doesn't ellipsize.
-          width: FLEET_COMPACT_LEFT_MARGIN,
+          ...(compact
+            ? {}
+            : {
+                label: 'Temperature (°F)',
+                labelStyle: CHART_AXIS_LABEL_STYLE,
+              }),
+          width: compact ? FLEET_COMPACT_LEFT_MARGIN : 56,
           min: yMin,
           max: yMax,
           valueFormatter: value => `${value}°F`,
@@ -335,13 +320,9 @@ function comparisonTemperatureDomain(values, comparison) {
     comparison?.mode === 'dashboard' && comparison?.bucketSize === '10m';
 
   if (!isDashboardFleet) {
-    // Analytics page comparison — keep the existing wider padding so
-    // 1w/1m ranges don't get artificially compressed when readings cluster.
     return paddedTemperatureDomain(values);
   }
 
-  // Dashboard fleet trend: tighter padding so stable 94-96°F bands still
-  // show variation, while larger swings naturally expand the domain.
   const nums = values.map(Number).filter(Number.isFinite);
   if (!nums.length) return paddedTemperatureDomain(values);
 
