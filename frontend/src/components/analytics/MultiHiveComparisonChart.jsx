@@ -9,9 +9,12 @@ import {
   parseTimelineDate,
 } from '../../utils/analyticsFormat';
 import {
+  CHART_AXIS_LABEL_STYLE,
+  CHART_AXIS_TICK_STYLE,
   comparisonChartSx,
   getFleetHiveColor,
   getFleetHiveDisplay,
+  pickTickValues,
   sortFleetHives,
 } from '../../utils/chartStyles';
 import { nullableNumber, parseChartTime, smoothSeries, sortPointsByBucketAt } from '../../utils/chartSeries';
@@ -137,11 +140,21 @@ export default function MultiHiveComparisonChart({
   const timestamps = bucketTimes.map(value => new Date(value));
   const domainStart = parseTimelineDate(comparison?.startAt);
   const domainEnd = parseTimelineDate(comparison?.endAt);
-  // X-axis tick spacing — same intent as the solo-hive chart.
-  // `tickLabelInterval` marks every Nth index as a label candidate;
-  // MUI space-filters the rest. Aim for ~29 candidates regardless of
-  // range length so the visible label count stays roughly 5.
-  const tickEvery = Math.max(1, Math.ceil(timestamps.length / 29));
+  // X-axis tick spacing.
+  //   - `compact` (dashboard fleet): hand MUI an explicit array of 5
+  //     evenly-spaced timestamps via `tickInterval` (see DashboardHive-
+  //     TemperatureChart.jsx for the rationale on the array vs callback
+  //     form). For a 24h fleet view (144 buckets) this yields labels at
+  //     hours 00 / ~06:00 / ~12:00 / ~18:00 / 24:00.
+  //   - non-compact (Analytics): keep the existing modulo
+  //     `tickLabelInterval` strategy untouched so the Analytics fleet
+  //     default behavior is preserved (visually equivalent to today).
+  const xAxisTickInterval = compact
+    ? pickTickValues(timestamps, 5)
+    : undefined;
+  const xAxisTickLabelInterval = compact
+    ? undefined
+    : (_, index) => index % Math.max(1, Math.ceil(timestamps.length / 29)) === 0;
   const showMarks = bucketTimes.length <= 36 && (hives.length + (hasExternalSeries ? 1 : 0)) <= 4;
   const allValues = [];
   const series = hives.map((hive, index) => {
@@ -209,17 +222,19 @@ export default function MultiHiveComparisonChart({
             context.location === 'tick'
               ? formatChartTime(value, range)
               : formatChartTooltipTime(value),
-          tickLabelInterval: (_, index) => index % tickEvery === 0,
-          tickLabelStyle: { fill: 'rgba(255,255,255,0.62)', fontSize: 12 },
-          ...(compact ? {} : { labelStyle: { fill: 'rgba(255,255,255,0.65)', fontSize: 13 } }),
+          ...(compact
+            ? { tickInterval: xAxisTickInterval }
+            : { tickLabelInterval: xAxisTickLabelInterval }),
+          tickLabelStyle: CHART_AXIS_TICK_STYLE,
+          ...(compact ? {} : { labelStyle: CHART_AXIS_LABEL_STYLE }),
         }]}
         yAxis={[{
           ...(compact ? {} : { label: 'Temperature (°F)' }),
           min: yMin,
           max: yMax,
           valueFormatter: value => `${value}°F`,
-          tickLabelStyle: { fill: 'rgba(255,255,255,0.62)', fontSize: 12 },
-          ...(compact ? {} : { labelStyle: { fill: 'rgba(255,255,255,0.65)', fontSize: 13 } }),
+          tickLabelStyle: CHART_AXIS_TICK_STYLE,
+          ...(compact ? {} : { labelStyle: CHART_AXIS_LABEL_STYLE }),
         }]}
         series={series}
         grid={{ horizontal: true, vertical: true }}

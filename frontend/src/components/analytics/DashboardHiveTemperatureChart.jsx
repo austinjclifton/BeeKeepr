@@ -9,7 +9,7 @@ import {
   paddedTemperatureDomain,
   parseTimelineDate,
 } from '../../utils/analyticsFormat';
-import { chartSx } from '../../utils/chartStyles';
+import { chartSx, CHART_AXIS_TICK_STYLE, CHART_AXIS_LABEL_STYLE, pickTickValues } from '../../utils/chartStyles';
 import { nullableNumber, sortPointsByBucketAt } from '../../utils/chartSeries';
 
 export default function DashboardHiveTemperatureChart({
@@ -43,16 +43,21 @@ export default function DashboardHiveTemperatureChart({
   const domainEnd = parseTimelineDate(timeline?.endAt);
   const internal = points.map(point => nullableNumber(point.internalTemperature));
   const outside = points.map(point => nullableNumber(point.outsideTemperature));
-  // X-axis tick spacing. `tickLabelInterval` returns true every Nth
-  // index to mark a tick as a label candidate; MUI then space-filters
-  // the candidates so adjacent labels don't overlap. The math:
-  //   - (50)         → 50 minutes per candidate
-  //   - / 10         → divide by the 10-minute bucket size
-  //   = 5 indices per candidate label
-  // On a 24h chart (144 ten-minute buckets) that's ~29 candidates,
-  // which MUI renders as ~5 visible labels — dense enough to read
-  // the time axis without crowding.
-  const tickEvery = Math.max(1, Math.round(50 / 10));
+  // X-axis tick labels: hand MUI a fixed array of 6 evenly-spaced
+  // timestamps (first and last always included) via `tickInterval`.
+  //
+  // We use `tickInterval` (array form) instead of a `tickLabelInterval`
+  // callback because on continuous time scales MUI's callback receives
+  // the **tick index** (D3-generated), not the data index — see MUI
+  // x-charts `models/axis.d.ts`. An index predicate keyed on
+  // `timestamps.length` silently misaligns with MUI's shorter tick
+  // array and most/all labels vanish in production. Passing explicit
+  // values via `tickInterval` sidesteps that mismatch entirely.
+  //
+  // For a 24h chart with 144 ten-minute buckets the 6 evenly-spaced
+  // candidates land at hours 00 / ~04:50 / ~09:40 / ~14:20 / ~19:00 /
+  // 24:00, which is readable without being crowded.
+  const tickInterval = pickTickValues(timestamps, 6);
   const [yMin, yMax] = paddedTemperatureDomain([...internal, ...outside]);
 
   return (
@@ -60,7 +65,13 @@ export default function DashboardHiveTemperatureChart({
       <LineChart
         height={height}
         skipAnimation
-        margin={{ left: 60, right: 12, top: 16, bottom: 16 }}
+        // Bottom margin bumped 16 → 40 (Jun 2026 chart-stability pass).
+        // The chart renders both 12px tick labels AND the 13px "Bucket
+        // Start Time" axis title on the same bottom edge; with `16` MUI
+        // had to drop the ticks to fit the title in the stricter prod
+        // layout path. 40 keeps both visible at `height={320}` while
+        // leaving ~192px of plot area (320 − 60 − 12 − 16 − 40).
+        margin={{ left: 60, right: 12, top: 16, bottom: 40 }}
         xAxis={[{
           data: timestamps,
           scaleType: 'time',
@@ -71,17 +82,17 @@ export default function DashboardHiveTemperatureChart({
             context.location === 'tick'
               ? formatChartTime(value, '1d')
               : formatChartTooltipTime(value),
-          tickLabelInterval: (_, index) => index % tickEvery === 0,
-          tickLabelStyle: { fill: 'rgba(255,255,255,0.62)', fontSize: 12 },
-          labelStyle: { fill: 'rgba(255,255,255,0.65)', fontSize: 13 },
+          tickInterval,
+          tickLabelStyle: CHART_AXIS_TICK_STYLE,
+          labelStyle: CHART_AXIS_LABEL_STYLE,
         }]}
         yAxis={[{
           label: 'Temperature (°F)',
           min: yMin,
           max: yMax,
           valueFormatter: value => `${value}°F`,
-          tickLabelStyle: { fill: 'rgba(255,255,255,0.62)', fontSize: 12 },
-          labelStyle: { fill: 'rgba(255,255,255,0.65)', fontSize: 13 },
+          tickLabelStyle: CHART_AXIS_TICK_STYLE,
+          labelStyle: CHART_AXIS_LABEL_STYLE,
         }]}
         series={[
           {
