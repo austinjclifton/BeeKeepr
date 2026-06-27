@@ -27,6 +27,13 @@ import { nullableNumber, parseChartTime, smoothSeries, sortPointsByBucketAt } fr
 // longest bold value at any domain / tick-spacing combo.
 const FLEET_COMPACT_LEFT_MARGIN = 96;
 const FLEET_COMPACT_RIGHT_MARGIN = 24;
+// `compact` used to drop axis titles entirely to reclaim vertical
+// plot space on the dashboard, but that made the unit ("°F") and
+// time semantics ("Bucket Start Time") invisible without a tooltip.
+// Now that titles are shown we still want a tighter bottom than the
+// Analytics chart's 64 — 56 leaves headroom for the bold label below
+// the hourly ticks without giving back the saved plot rows.
+const FLEET_COMPACT_BOTTOM_MARGIN = 56;
 
 // Format a hive series label. When `labelMode === 'locationName'` and the
 // hive has a location, the label is prefixed with the short location name:
@@ -62,9 +69,11 @@ export default function MultiHiveComparisonChart({
   // 'name' matches Analytics. 'locationName' is used by the dashboard
   // fleet card to disambiguate hives across yards.
   labelMode = 'name',
-  // Compact mode is dashboard-only. It removes axis titles and uses
-  // deterministic hourly x ticks so the dashboard fleet chart matches
-  // the selected-hive chart.
+  // Compact mode is dashboard-only. It keeps the axis titles (so the
+  // dashboard fleet chart matches the selected-hive chart and the
+  // Analytics fleet chart) but uses deterministic hourly x ticks and a
+  // tighter bottom margin to reclaim vertical plot space on the
+  // dashboard card.
   compact = false,
 }) {
   if (loading) return <LoadingState label="Loading comparison…" />;
@@ -216,14 +225,14 @@ export default function MultiHiveComparisonChart({
         height={height}
         skipAnimation
         margin={compact
-          ? { left: FLEET_COMPACT_LEFT_MARGIN, right: FLEET_COMPACT_RIGHT_MARGIN, top: 24, bottom: 32 }
+          ? { left: FLEET_COMPACT_LEFT_MARGIN, right: FLEET_COMPACT_RIGHT_MARGIN, top: 24, bottom: FLEET_COMPACT_BOTTOM_MARGIN }
           : { left: 56, right: 20, top: 24, bottom: 64 }}
         xAxis={[{
           data: xValues,
           scaleType: 'time',
           min: axisStart,
           max: axisEnd,
-          ...(compact ? {} : { label: 'Bucket Start Time' }),
+          label: 'Bucket Start Time',
 
           // Dashboard compact mode uses explicit hourly ticks so soft
           // reloads, hard refreshes, and prod builds keep the same cadence.
@@ -245,16 +254,11 @@ export default function MultiHiveComparisonChart({
               : '';
           },
           tickLabelStyle: CHART_AXIS_TICK_STYLE,
-          ...(compact ? {} : {
-            label: 'Bucket Start Time',
-            labelStyle: CHART_AXIS_LABEL_STYLE,
-          }),
+          labelStyle: CHART_AXIS_LABEL_STYLE,
         }]}
         yAxis={[{
-          ...(compact ? {} : {
-            label: 'Temperature (°F)',
-            labelStyle: CHART_AXIS_LABEL_STYLE,
-          }),
+          label: 'Temperature (°F)',
+          labelStyle: CHART_AXIS_LABEL_STYLE,
           // MUI x-charts v8 default yAxis.width is 45 — not driven by
           // margin.left. Bump it explicitly so bold labels like `94.5°F`
           // have enough room and MUI's `shortenLabels` doesn't ellipsize.

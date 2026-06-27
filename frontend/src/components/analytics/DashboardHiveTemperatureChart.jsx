@@ -20,14 +20,15 @@ import { nullableNumber, sortPointsByBucketAt } from '../../utils/chartSeries';
 
 // `left` bumped to 84 — gives the bold y-axis tick labels like
 // `100°F` comfortable headroom. `bottom` reserves room for MUI's
-// single x-axis. We intentionally use MUI's real x-axis here, but
+// single x-axis plus the bold axis-title label ("Bucket Start Time")
+// underneath it. We intentionally use MUI's real x-axis here, but
 // we control the tick positions ourselves via `tickInterval` so
 // refresh / hard-refresh / prod-build cannot change the cadence.
 const CHART_MARGINS = {
   left: 84,
   right: 24,
   top: 16,
-  bottom: 36,
+  bottom: 60,
 };
 
 function toEpochMs(value) {
@@ -109,6 +110,7 @@ export default function DashboardHiveTemperatureChart({
             scaleType: 'time',
             min: axisStart,
             max: axisEnd,
+            label: 'Bucket Start Time',
 
             // Deterministic dashboard axis:
             // - small MUI tick every hour
@@ -125,6 +127,7 @@ export default function DashboardHiveTemperatureChart({
                 : '';
             },
             tickLabelStyle: CHART_AXIS_TICK_STYLE,
+            labelStyle: CHART_AXIS_LABEL_STYLE,
           },
         ]}
         yAxis={[

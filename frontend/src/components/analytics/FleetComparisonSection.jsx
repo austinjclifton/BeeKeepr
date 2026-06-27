@@ -106,10 +106,12 @@ export default function FleetComparisonSection({
               // Dashboard opts into "Location · Hive" series labels so
               // the chart tooltip matches the legend pills.
               labelMode="locationName"
-              // Dashboard opts out of the chart axis labels (the header
-              // subtitle already explains time range + units) and the
-              // label-driven bottom margin, reclaiming vertical plot
-              // space. Analytics keeps the labeled default.
+              // Dashboard opts into the same axis labels as Analytics
+              // ("Bucket Start Time" + "Temperature (°F)") so units
+              // and time semantics stay explicit, but keeps the
+              // tighter bottom margin and hourly deterministic ticks
+              // (via `compact`) to reclaim vertical plot space on the
+              // dashboard card.
               compact
               // Match the Fleet Status table's precision rules:
               // internal series always show 2 decimals, the external
