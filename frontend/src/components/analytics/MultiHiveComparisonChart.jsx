@@ -9,49 +9,19 @@ import {
   parseTimelineDate,
 } from '../../utils/analyticsFormat';
 import {
-  CHART_AXIS_LABEL_STYLE,
-  CHART_AXIS_TICK_STYLE,
   comparisonChartSx,
+  buildHourlyTicks,
   getFleetHiveColor,
   getFleetHiveDisplay,
+  shouldLabelTick,
   sortFleetHives,
 } from '../../utils/chartStyles';
 import { nullableNumber, parseChartTime, smoothSeries, sortPointsByBucketAt } from '../../utils/chartSeries';
 
-const FLEET_COMPACT_LEFT_MARGIN = 48;
+// `left` was bumped from 48 to 64 so bold y-axis tick labels like
+// `96°F` never ellipsize in compact dashboard mode.
+const FLEET_COMPACT_LEFT_MARGIN = 64;
 const FLEET_COMPACT_RIGHT_MARGIN = 24;
-
-const HOUR_MS = 60 * 60 * 1000;
-const LABEL_EVERY_HOURS = 3;
-
-function buildHourlyTicks(start, end) {
-  if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) {
-    return [];
-  }
-
-  const ticks = [start];
-  const firstHour = new Date(start);
-  firstHour.setMinutes(0, 0, 0);
-
-  let nextHour = firstHour.getTime();
-  if (nextHour <= start) nextHour += HOUR_MS;
-
-  for (let tick = nextHour; tick < end; tick += HOUR_MS) {
-    ticks.push(tick);
-  }
-
-  ticks.push(end);
-  return ticks;
-}
-
-function shouldLabelDashboardTick(value) {
-  const tickDate = new Date(value);
-
-  return (
-    tickDate.getMinutes() === 0 &&
-    tickDate.getHours() % LABEL_EVERY_HOURS === 0
-  );
-}
 
 // Format a hive series label. When `labelMode === 'locationName'` and the
 // hive has a location, the label is prefixed with the short location name:
@@ -249,20 +219,16 @@ export default function MultiHiveComparisonChart({
               return formatChartTime(value, range);
             }
 
-            return shouldLabelDashboardTick(value)
+            return shouldLabelTick(value)
               ? formatChartTime(value, range)
               : '';
           },
-          tickLabelStyle: CHART_AXIS_TICK_STYLE,
-          ...(compact ? {} : { labelStyle: CHART_AXIS_LABEL_STYLE }),
         }]}
         yAxis={[{
           ...(compact ? {} : { label: 'Temperature (°F)' }),
           min: yMin,
           max: yMax,
           valueFormatter: value => `${value}°F`,
-          tickLabelStyle: CHART_AXIS_TICK_STYLE,
-          ...(compact ? {} : { labelStyle: CHART_AXIS_LABEL_STYLE }),
         }]}
         series={series}
         grid={{ horizontal: true, vertical: true }}

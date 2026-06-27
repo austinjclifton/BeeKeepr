@@ -11,19 +11,18 @@ import {
 } from '../../utils/analyticsFormat';
 import {
   chartSx,
-  CHART_AXIS_LABEL_STYLE,
-  CHART_AXIS_TICK_STYLE,
+  buildHourlyTicks,
+  shouldLabelTick,
 } from '../../utils/chartStyles';
 import { nullableNumber, sortPointsByBucketAt } from '../../utils/chartSeries';
 
-const HOUR_MS = 60 * 60 * 1000;
-const LABEL_EVERY_HOURS = 3;
-
-// `bottom` reserves room for MUI's single x-axis.
-// We intentionally use MUI's real x-axis here, but we control the tick
-// positions ourselves so refresh/hard-refresh cannot change the cadence.
+// `left` was bumped from 60 to 72 so bold y-axis tick labels like
+// `96°F` never ellipsize. `bottom` reserves room for MUI's single
+// x-axis. We intentionally use MUI's real x-axis here, but we
+// control the tick positions ourselves via `tickInterval` so refresh /
+// hard-refresh / prod-build cannot change the cadence.
 const CHART_MARGINS = {
-  left: 60,
+  left: 72,
   right: 24,
   top: 16,
   bottom: 36,
@@ -32,33 +31,6 @@ const CHART_MARGINS = {
 function toEpochMs(value) {
   const ms = value instanceof Date ? value.getTime() : new Date(value).getTime();
   return Number.isFinite(ms) ? ms : null;
-}
-
-function buildHourlyTicks(start, end) {
-  if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) {
-    return [];
-  }
-
-  const ticks = [start];
-  const firstHour = new Date(start);
-  firstHour.setMinutes(0, 0, 0);
-
-  let nextHour = firstHour.getTime();
-  if (nextHour <= start) nextHour += HOUR_MS;
-
-  for (let tick = nextHour; tick < end; tick += HOUR_MS) {
-    ticks.push(tick);
-  }
-
-  ticks.push(end);
-  return ticks;
-}
-
-function shouldLabelTick(value, start, end) {
-  if (value === start || value === end) return true;
-
-  const tickDate = new Date(value);
-  return tickDate.getMinutes() === 0 && tickDate.getHours() % LABEL_EVERY_HOURS === 0;
 }
 
 export default function DashboardHiveTemperatureChart({
@@ -146,11 +118,10 @@ export default function DashboardHiveTemperatureChart({
                 return formatChartTooltipTime(value);
               }
 
-              return shouldLabelTick(value, axisStart, axisEnd)
+              return shouldLabelTick(value)
                 ? formatChartTime(value, '1d')
                 : '';
             },
-            tickLabelStyle: CHART_AXIS_TICK_STYLE,
           },
         ]}
         yAxis={[
@@ -159,8 +130,6 @@ export default function DashboardHiveTemperatureChart({
             min: yMin,
             max: yMax,
             valueFormatter: value => `${value}°F`,
-            tickLabelStyle: CHART_AXIS_TICK_STYLE,
-            labelStyle: CHART_AXIS_LABEL_STYLE,
           },
         ]}
         series={[

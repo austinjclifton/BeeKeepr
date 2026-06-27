@@ -1,32 +1,32 @@
 /**
- * Single source of truth for chart axis text styling. Used both as
- * MUI x-charts per-axis `tickLabelStyle` / `labelStyle` props (which
- * win over CSS via the inline `style` attribute on the SVG <text>)
- * AND as `chartSx` CSS-class overrides (which catch anything the
- * per-axis props don't cover).
+ * Single source of truth for chart axis text styling. Chart components
+ * decide data and tick positions; this file decides how the axis text
+ * looks. There is no second styling path — chart components do NOT
+ * pass `tickLabelStyle` / `labelStyle` props, only this sx object.
  *
- * Pinning every property — including `fontWeight` — kills the
- * "font weight looks different after a refresh / hard refresh /
- * prod build" drift that came from `fontWeight` falling through to
- * MUI x-charts' implicit defaults, which were resolved differently
- * depending on emotion's CSS injection order (matters here because
- * the dashboard chart components are `lazy()`-loaded behind
- * `<Suspense>`).
- *
- * Font sizes were bumped from 11 → 12 in the dashboard readability
- * pass (Jun 2026); the 11px tick labels were too small against the
- * dashboard's other chrome.
+ * The tick label / axis label rules use `!important` for fontWeight
+ * and fontFamily because MUI x-charts v8 inlines its own default
+ * style (theme.typography.caption, fontWeight: 400) directly on the
+ * SVG <text> element. Inline styles beat non-important CSS class
+ * rules in CSS specificity, so without `!important` the tick labels
+ * fall back to fontWeight: 400 on soft reload / hard refresh / prod
+ * build, depending on whether MUI's internal styled-component rule
+ * or the consumer's sx rule was injected first by emotion. The
+ * `!important` flag makes the result deterministic regardless of
+ * injection order.
  */
 export const CHART_AXIS_TICK_STYLE = {
   fill: 'rgba(255,255,255,0.62)',
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 800,
+  fontFamily: 'inherit',
 };
 
 export const CHART_AXIS_LABEL_STYLE = {
   fill: 'rgba(255,255,255,0.65)',
   fontSize: 13,
   fontWeight: 700,
+  fontFamily: 'inherit',
 };
 
 /**
@@ -35,29 +35,35 @@ export const CHART_AXIS_LABEL_STYLE = {
  * Centralizes the dark-theme axis/grid/tooltip colors so every chart
  * renders identically. Kept in `utils/` because it's pure styling data
  * with no React component logic.
- *
- * Axis text rules reference the shared `CHART_AXIS_TICK_STYLE` /
- * `CHART_AXIS_LABEL_STYLE` constants so the CSS-class path and the
- * per-axis props can't drift apart.
  */
 export const chartSx = {
   '& .MuiChartsAxis-line, & .MuiChartsAxis-tick': { stroke: 'rgba(255,255,255,0.18)' },
   '& .MuiChartsAxis-tickLabel': {
     ...CHART_AXIS_TICK_STYLE,
-    fontFamily: 'inherit',
+    fontWeight: '800 !important',
+    fontFamily: 'inherit !important',
   },
   '& .MuiChartsAxis-label': {
     ...CHART_AXIS_LABEL_STYLE,
-    fontFamily: 'inherit',
+    fontWeight: '700 !important',
+    fontFamily: 'inherit !important',
   },
-  // Pin the x-axis tick label path explicitly. Without this, emotion's
-  // CSS injection order can let the more general `MuiChartsAxis-tickLabel`
-  // rule fall through to MUI's implicit default font weight when this
-  // chart is lazy-loaded behind <Suspense> — which is what produced the
-  // soft-reload / hard-refresh / prod-build drift on the dashboard x-axis.
+  // Pin the x and y tick label paths explicitly. Emotion's CSS
+  // injection order can otherwise let the more general
+  // `MuiChartsAxis-tickLabel` rule fall through to MUI's inline
+  // default when the chart is lazy-loaded behind <Suspense>, even
+  // with `!important` (the !important wins regardless, but this
+  // reduces the chance of specificity conflicts with other rules
+  // scoped under `& .MuiChartsAxis-directionX`).
   '& .MuiChartsAxis-directionX .MuiChartsAxis-tickLabel': {
     ...CHART_AXIS_TICK_STYLE,
-    fontFamily: 'inherit',
+    fontWeight: '800 !important',
+    fontFamily: 'inherit !important',
+  },
+  '& .MuiChartsAxis-directionY .MuiChartsAxis-tickLabel': {
+    ...CHART_AXIS_TICK_STYLE,
+    fontWeight: '800 !important',
+    fontFamily: 'inherit !important',
   },
   '& .MuiChartsLegend-label': { fill: 'rgba(255,255,255,0.78)', fontSize: 12 },
   '& .MuiChartsLegend-mark': { rx: 2 },
@@ -108,6 +114,62 @@ export const FLEET_HIVE_COLORS = [
 /** Pick a palette color for a given hive index (wraps after the palette length). */
 export function getFleetHiveColor(index) {
   return FLEET_HIVE_COLORS[index % FLEET_HIVE_COLORS.length];
+}
+
+/**
+ * Shared dashboard hourly x-axis helpers.
+ *
+ * The dashboard charts show clean whole-hour tick marks with labels
+ * on every-3-hour boundaries (12 AM, 3 AM, 6 AM, 9 AM, 12 PM, 3 PM,
+ * 6 PM, 9 PM). The visible ticks never include the raw window
+ * start/end times (e.g. `10:13 PM`), which are kept available only
+ * in tooltips via `formatChartTooltipTime`.
+ */
+
+export const HOUR_MS = 60 * 60 * 1000;
+export const LABEL_EVERY_HOURS = 3;
+
+/**
+ * Build the visible tick positions for a 24h-style dashboard x-axis.
+ * Returns the whole-hour timestamps strictly between `start` and
+ * `end` (excludes both endpoints, so the raw start/end times like
+ * `10:13 PM` never appear as visible labels). For a window of
+ * `10:13 PM` → `10:13 PM` this yields 11 PM, 12 AM, 1 AM, ..., 10 PM.
+ */
+export function buildHourlyTicks(start, end) {
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) {
+    return [];
+  }
+
+  // Find the first whole hour strictly AFTER start. If start is at
+  // 10:13 PM, the first whole hour at or before that is 10 PM, so we
+  // bump forward to 11 PM.
+  const firstHour = new Date(start);
+  firstHour.setMinutes(0, 0, 0);
+  let nextHour = firstHour.getTime();
+  if (nextHour <= start) nextHour += HOUR_MS;
+
+  const ticks = [];
+  // Loop condition `tick < end` already enforces "strictly before
+  // end", so 10 PM (22:00) is included for a 10:13 PM → 10:13 PM
+  // window but 11 PM (23:00) is not.
+  for (let tick = nextHour; tick < end; tick += HOUR_MS) {
+    ticks.push(tick);
+  }
+  return ticks;
+}
+
+/**
+ * Decide whether a tick value should render a visible label. Labels
+ * appear only on whole-hour 3-hour boundaries — never on the raw
+ * window start/end, which may be e.g. `10:13 PM`. Tick marks (small
+ * hash marks on the axis) still render on every whole hour; this
+ * function only gates the text label.
+ */
+export function shouldLabelTick(value) {
+  if (!Number.isFinite(value)) return false;
+  const tickDate = new Date(value);
+  return tickDate.getMinutes() === 0 && tickDate.getHours() % LABEL_EVERY_HOURS === 0;
 }
 
 /**
