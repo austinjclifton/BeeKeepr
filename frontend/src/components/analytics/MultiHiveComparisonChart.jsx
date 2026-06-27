@@ -14,10 +14,44 @@ import {
   comparisonChartSx,
   getFleetHiveColor,
   getFleetHiveDisplay,
-  pickTickValues,
   sortFleetHives,
 } from '../../utils/chartStyles';
 import { nullableNumber, parseChartTime, smoothSeries, sortPointsByBucketAt } from '../../utils/chartSeries';
+
+const FLEET_COMPACT_LEFT_MARGIN = 48;
+const FLEET_COMPACT_RIGHT_MARGIN = 24;
+
+const HOUR_MS = 60 * 60 * 1000;
+const LABEL_EVERY_HOURS = 3;
+
+function buildHourlyTicks(start, end) {
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) {
+    return [];
+  }
+
+  const ticks = [start];
+  const firstHour = new Date(start);
+  firstHour.setMinutes(0, 0, 0);
+
+  let nextHour = firstHour.getTime();
+  if (nextHour <= start) nextHour += HOUR_MS;
+
+  for (let tick = nextHour; tick < end; tick += HOUR_MS) {
+    ticks.push(tick);
+  }
+
+  ticks.push(end);
+  return ticks;
+}
+
+function shouldLabelDashboardTick(value) {
+  const tickDate = new Date(value);
+
+  return (
+    tickDate.getMinutes() === 0 &&
+    tickDate.getHours() % LABEL_EVERY_HOURS === 0
+  );
+}
 
 // Format a hive series label. When `labelMode === 'locationName'` and the
 // hive has a location, the label is prefixed with the short location name:
@@ -37,49 +71,29 @@ export default function MultiHiveComparisonChart({
   range,
   loading = false,
   // Dashboard fleet overview wants a compact chart so the bottom half
-  // doesn't dwarf the selected-hive area above. The Analytics page
-  // overrides this with `height={400}` — see Analytics.jsx.
-  // Bumped from 300 → 340 (Jun 2026 readability pass) so the x-axis
-  // "Bucket Start Time" title has room to sit below the tick labels
-  // without MUI hiding the ticks to make space for the title.
+  // doesn't dwarf the selected-hive area above. Analytics overrides this
+  // with `height={400}`.
   height = 340,
   showFooter = true,
   smoothFleetDisplay = false,
   smoothComparisonDisplay = false,
-  // The dashboard section renders its own header legend in the card
-  // chrome (so the hive color pills sit to the right of the title
-  // instead of floating at the top of the chart area). Pass
-  // `hideLegend` to suppress the built-in MUI legend there. Defaults
-  // to `false` so the Analytics page — which still uses the built-in
-  // legend — is unchanged.
+  // Dashboard renders its own header legend in the card chrome. Analytics
+  // keeps the built-in MUI legend.
   hideLegend = false,
-  // Tooltip precision overrides for the two temperature kinds. The
-  // dashboard fleet chart passes `internalPrecision={2}` and
-  // `externalPrecision={1}` so the bottom-dashboard readouts stay
-  // consistent with the Fleet Status table; other callers (Analytics)
-  // leave them as `'auto'` and keep the existing trim-trailing-zeros
-  // behavior.
+  // Dashboard fleet passes fixed precision so tooltip/readouts match the
+  // Fleet Status table. Analytics keeps the existing auto-trim behavior.
   internalPrecision = 'auto',
   externalPrecision = 'auto',
-  // Series label format. 'name' returns just the hive name (default,
-  // matches Analytics). 'locationName' prefixes the short location when
-  // available, e.g. "Blue Ridge · Biltmore Estate Hive". The dashboard's
-  // FleetComparisonSection opts in.
+  // 'name' matches Analytics. 'locationName' is used by the dashboard
+  // fleet card to disambiguate hives across yards.
   labelMode = 'name',
-  // Dashboard opts into a tighter chart: omit the axis labels (the
-  // Fleet Trend header subtitle already explains the time range and y
-  // units) and shrink the label-driven bottom/left margin to reclaim
-  // vertical plot space. Default false keeps the labeled chart used by
-  // Analytics unchanged.
+  // Compact mode is dashboard-only. It removes axis titles and uses
+  // deterministic hourly x ticks so the dashboard fleet chart matches
+  // the selected-hive chart.
   compact = false,
 }) {
   if (loading) return <LoadingState label="Loading comparison…" />;
 
-  // Group by yard so hives from the same location appear adjacent in
-  // the chart and the legend. `FleetComparisonSection` already sorts
-  // and merges `locationName` before passing `comparison` down, but
-  // re-sorting defensively here keeps the chart correct even if a
-  // future caller forgets to.
   const hives = sortFleetHives(comparison?.hives ?? []).map(hive => ({
     ...hive,
     series: sortPointsByBucketAt(hive?.series ?? []),
@@ -91,6 +105,7 @@ export default function MultiHiveComparisonChart({
     nullableNumber(point?.temperature ?? point?.externalTemperature) != null,
   );
   const withData = hives.filter(hive => (hive.series ?? []).length > 0);
+
   if (!isLocationComparison && hives.length < 2) {
     return (
       <EmptyState
@@ -99,6 +114,7 @@ export default function MultiHiveComparisonChart({
       />
     );
   }
+
   if (isLocationComparison && !hives.length && !hasExternalSeries) {
     return (
       <EmptyState
@@ -107,6 +123,7 @@ export default function MultiHiveComparisonChart({
       />
     );
   }
+
   if (!withData.length && !hasExternalSeries) {
     return (
       <EmptyState
@@ -132,31 +149,28 @@ export default function MultiHiveComparisonChart({
 
   const bucketTimes = Array.from(new Set(
     [
-      ...hives.flatMap(hive => (hive.series ?? []).map(point => parseBucketTime(point?.bucketAt, displayBucketSize)).filter(value => value != null)),
-      ...externalSeries.map(point => parseBucketTime(point?.bucketAt, displayBucketSize)).filter(value => value != null),
+      ...hives.flatMap(hive =>
+        (hive.series ?? [])
+          .map(point => parseBucketTime(point?.bucketAt, displayBucketSize))
+          .filter(value => value != null),
+      ),
+      ...externalSeries
+        .map(point => parseBucketTime(point?.bucketAt, displayBucketSize))
+        .filter(value => value != null),
     ],
   )).sort((a, b) => a - b);
 
-  const timestamps = bucketTimes.map(value => new Date(value));
-  const domainStart = parseTimelineDate(comparison?.startAt);
-  const domainEnd = parseTimelineDate(comparison?.endAt);
-  // X-axis tick spacing.
-  //   - `compact` (dashboard fleet): hand MUI an explicit array of 5
-  //     evenly-spaced timestamps via `tickInterval` (see DashboardHive-
-  //     TemperatureChart.jsx for the rationale on the array vs callback
-  //     form). For a 24h fleet view (144 buckets) this yields labels at
-  //     hours 00 / ~06:00 / ~12:00 / ~18:00 / 24:00.
-  //   - non-compact (Analytics): keep the existing modulo
-  //     `tickLabelInterval` strategy untouched so the Analytics fleet
-  //     default behavior is preserved (visually equivalent to today).
-  const xAxisTickInterval = compact
-    ? pickTickValues(timestamps, 5)
-    : undefined;
-  const xAxisTickLabelInterval = compact
-    ? undefined
-    : (_, index) => index % Math.max(1, Math.ceil(timestamps.length / 29)) === 0;
+  const domainStart = parseTimelineDate(comparison?.startAt)?.getTime();
+  const domainEnd = parseTimelineDate(comparison?.endAt)?.getTime();
+
+  const xValues = bucketTimes;
+  const axisStart = Number.isFinite(domainStart) ? domainStart : xValues[0];
+  const axisEnd = Number.isFinite(domainEnd) ? domainEnd : xValues[xValues.length - 1];
+  const hourlyTicks = compact ? buildHourlyTicks(axisStart, axisEnd) : undefined;
+
   const showMarks = bucketTimes.length <= 36 && (hives.length + (hasExternalSeries ? 1 : 0)) <= 4;
   const allValues = [];
+
   const series = hives.map((hive, index) => {
     const byBucket = toBucketValueMap(
       hive.series,
@@ -167,7 +181,9 @@ export default function MultiHiveComparisonChart({
     const data = useDisplaySmoothing
       ? smoothSeries(rawData, smoothingOptions)
       : rawData;
+
     allValues.push(...data, ...rawData);
+
     return {
       data,
       label: formatHiveLabel(hive, labelMode),
@@ -188,7 +204,9 @@ export default function MultiHiveComparisonChart({
     const displayData = useComparisonSmoothing
       ? smoothSeries(data, smoothingOptions)
       : data;
+
     allValues.push(...displayData, ...data);
+
     series.push({
       data: displayData,
       label: 'External °F',
@@ -198,6 +216,7 @@ export default function MultiHiveComparisonChart({
       valueFormatter: value => formatChartTemperature(value, externalPrecision),
     });
   }
+
   const [yMin, yMax] = comparisonTemperatureDomain(allValues, comparison);
 
   return (
@@ -205,26 +224,35 @@ export default function MultiHiveComparisonChart({
       <LineChart
         height={height}
         skipAnimation
-        // Default margin reserves space for the x-axis "Bucket Start
-        // Time" label; the compact mode drops the label and trims both
-        // the bottom and left margins to reclaim plot area for the
-        // dashboard's Fleet Trend card.
         margin={compact
-          ? { left: 48, right: 20, top: 24, bottom: 36 }
+          ? { left: FLEET_COMPACT_LEFT_MARGIN, right: FLEET_COMPACT_RIGHT_MARGIN, top: 24, bottom: 32 }
           : { left: 56, right: 20, top: 24, bottom: 64 }}
         xAxis={[{
-          data: timestamps,
+          data: xValues,
           scaleType: 'time',
-          min: domainStart ?? undefined,
-          max: domainEnd ?? undefined,
+          min: axisStart,
+          max: axisEnd,
           ...(compact ? {} : { label: 'Bucket Start Time' }),
-          valueFormatter: (value, context) =>
-            context.location === 'tick'
+
+          // Dashboard compact mode uses explicit hourly ticks so soft
+          // reloads, hard refreshes, and prod builds keep the same cadence.
+          // Exact edge times like 9:42 PM stay useful in tooltips, but the
+          // visible axis only labels clean 3-hour clock boundaries.
+          ...(compact ? { tickInterval: hourlyTicks } : {}),
+
+          valueFormatter: (value, context) => {
+            if (context.location !== 'tick') {
+              return formatChartTooltipTime(value);
+            }
+
+            if (!compact) {
+              return formatChartTime(value, range);
+            }
+
+            return shouldLabelDashboardTick(value)
               ? formatChartTime(value, range)
-              : formatChartTooltipTime(value),
-          ...(compact
-            ? { tickInterval: xAxisTickInterval }
-            : { tickLabelInterval: xAxisTickLabelInterval }),
+              : '';
+          },
           tickLabelStyle: CHART_AXIS_TICK_STYLE,
           ...(compact ? {} : { labelStyle: CHART_AXIS_LABEL_STYLE }),
         }]}
@@ -240,18 +268,13 @@ export default function MultiHiveComparisonChart({
         grid={{ horizontal: true, vertical: true }}
         axisHighlight={{ x: 'line' }}
         hideLegend={hideLegend}
-        // No custom tooltip slot — fall through to MUI's default
-        // axis tooltip so the fleet chart reads identically to the
-        // dashboard's solo-hive 24h chart (`DashboardHiveTemperatureChart`).
-        // Both share the `chartSx`/`comparisonChartSx` styling so the
-        // tooltip paper, axis labels, and series marks render the same
-        // way in both charts.
         slotProps={{
           tooltip: { trigger: 'axis', anchor: 'pointer' },
           line: { strokeLinecap: 'round', strokeLinejoin: 'round' },
         }}
         sx={comparisonChartSx}
       />
+
       {showFooter && (
         <div className="-mt-1.5 text-[12px] leading-snug text-ink-muted">
           Source readings are stored in 10-minute ingest buckets.
@@ -268,9 +291,11 @@ export default function MultiHiveComparisonChart({
 function parseBucketTime(value, bucketSize) {
   const parsedTime = parseChartTime(value);
   if (parsedTime == null) return null;
+
   const date = new Date(parsedTime);
   const normalized = normalizeBucketDate(date, bucketSize);
   const bucketTime = normalized?.getTime();
+
   return Number.isFinite(bucketTime) ? bucketTime : null;
 }
 
@@ -307,23 +332,20 @@ function comparisonTemperatureDomain(values, comparison) {
 
   if (!isDashboardFleet) {
     // Analytics page comparison — keep the existing wider padding so
-    // 1w/1m ranges don't get artificially compressed when readings
-    // happen to cluster.
+    // 1w/1m ranges don't get artificially compressed when readings cluster.
     return paddedTemperatureDomain(values);
   }
 
-  // Dashboard fleet trend: tighter padding so a stable band of
-  // readings (e.g. all hives hovering 94-96°F) still shows the line
-  // variation. The actual min/max of the data still drives the
-  // domain — if a value drops to 90°F or climbs to 100°F, the y-axis
-  // expands to fit because the span grew, without compressing the
-  // rest of the chart.
+  // Dashboard fleet trend: tighter padding so stable 94-96°F bands still
+  // show variation, while larger swings naturally expand the domain.
   const nums = values.map(Number).filter(Number.isFinite);
   if (!nums.length) return paddedTemperatureDomain(values);
+
   const min = Math.min(...nums);
   const max = Math.max(...nums);
   const span = max - min;
   const pad = span === 0 ? 1.5 : Math.max(0.5, span * 0.1);
+
   return [
     Math.floor((min - pad) * 10) / 10,
     Math.ceil((max + pad) * 10) / 10,
