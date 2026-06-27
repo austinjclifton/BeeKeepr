@@ -20,13 +20,13 @@
 export const CHART_AXIS_TICK_STYLE = {
   fill: 'rgba(255,255,255,0.62)',
   fontSize: 12,
-  fontWeight: 400,
+  fontWeight: 600,
 };
 
 export const CHART_AXIS_LABEL_STYLE = {
   fill: 'rgba(255,255,255,0.65)',
   fontSize: 13,
-  fontWeight: 500,
+  fontWeight: 700,
 };
 
 /**
@@ -42,8 +42,23 @@ export const CHART_AXIS_LABEL_STYLE = {
  */
 export const chartSx = {
   '& .MuiChartsAxis-line, & .MuiChartsAxis-tick': { stroke: 'rgba(255,255,255,0.18)' },
-  '& .MuiChartsAxis-tickLabel': { ...CHART_AXIS_TICK_STYLE },
-  '& .MuiChartsAxis-label': { ...CHART_AXIS_LABEL_STYLE },
+  '& .MuiChartsAxis-tickLabel': {
+    ...CHART_AXIS_TICK_STYLE,
+    fontFamily: 'inherit',
+  },
+  '& .MuiChartsAxis-label': {
+    ...CHART_AXIS_LABEL_STYLE,
+    fontFamily: 'inherit',
+  },
+  // Pin the x-axis tick label path explicitly. Without this, emotion's
+  // CSS injection order can let the more general `MuiChartsAxis-tickLabel`
+  // rule fall through to MUI's implicit default font weight when this
+  // chart is lazy-loaded behind <Suspense> — which is what produced the
+  // soft-reload / hard-refresh / prod-build drift on the dashboard x-axis.
+  '& .MuiChartsAxis-directionX .MuiChartsAxis-tickLabel': {
+    ...CHART_AXIS_TICK_STYLE,
+    fontFamily: 'inherit',
+  },
   '& .MuiChartsLegend-label': { fill: 'rgba(255,255,255,0.78)', fontSize: 12 },
   '& .MuiChartsLegend-mark': { rx: 2 },
   '& .MuiChartsGrid-line': { stroke: 'rgba(255,255,255,0.08)' },
