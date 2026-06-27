@@ -9,6 +9,8 @@ import {
   parseTimelineDate,
 } from '../../utils/analyticsFormat';
 import {
+  CHART_AXIS_LABEL_STYLE,
+  CHART_AXIS_TICK_STYLE,
   comparisonChartSx,
   buildHourlyTicks,
   getFleetHiveColor,
@@ -18,9 +20,12 @@ import {
 } from '../../utils/chartStyles';
 import { nullableNumber, parseChartTime, smoothSeries, sortPointsByBucketAt } from '../../utils/chartSeries';
 
-// `left` was bumped from 48 to 64 so bold y-axis tick labels like
-// `96°F` never ellipsize in compact dashboard mode.
-const FLEET_COMPACT_LEFT_MARGIN = 64;
+// `left` bumped to 96 — the fleet chart's wider y-axis values like
+// `94.5°F` were ellipsizing at 72 because MUI's `shortenLabels`
+// measures available width off the axis config and reserves extra
+// room for the tick + gap. 96 leaves comfortable headroom for the
+// longest bold value at any domain / tick-spacing combo.
+const FLEET_COMPACT_LEFT_MARGIN = 96;
 const FLEET_COMPACT_RIGHT_MARGIN = 24;
 
 // Format a hive series label. When `labelMode === 'locationName'` and the
@@ -138,6 +143,21 @@ export default function MultiHiveComparisonChart({
   const axisEnd = Number.isFinite(domainEnd) ? domainEnd : xValues[xValues.length - 1];
   const hourlyTicks = compact ? buildHourlyTicks(axisStart, axisEnd) : undefined;
 
+  // Force a fresh MUI chart instance whenever the underlying data shifts
+  // (different hives, different range, different bucket times). Without
+  // this, React reconciles the existing chart in place and any axis
+  // styling that MUI x-charts applies during the initial mount — including
+  // `tickLabelStyle` / `labelStyle` — can survive stale across re-renders,
+  // which is what produced the intermittent "x-axis not bold" symptom on
+  // the fleet chart. Mirrors DashboardHiveTemperatureChart's `chartKey`.
+  const chartKey = [
+    hives.length,
+    axisStart,
+    axisEnd,
+    xValues[0],
+    xValues[xValues.length - 1],
+  ].join(':');
+
   const showMarks = bucketTimes.length <= 36 && (hives.length + (hasExternalSeries ? 1 : 0)) <= 4;
   const allValues = [];
 
@@ -192,6 +212,7 @@ export default function MultiHiveComparisonChart({
   return (
     <>
       <LineChart
+        key={chartKey}
         height={height}
         skipAnimation
         margin={compact
@@ -223,12 +244,25 @@ export default function MultiHiveComparisonChart({
               ? formatChartTime(value, range)
               : '';
           },
+          tickLabelStyle: CHART_AXIS_TICK_STYLE,
+          ...(compact ? {} : {
+            label: 'Bucket Start Time',
+            labelStyle: CHART_AXIS_LABEL_STYLE,
+          }),
         }]}
         yAxis={[{
-          ...(compact ? {} : { label: 'Temperature (°F)' }),
+          ...(compact ? {} : {
+            label: 'Temperature (°F)',
+            labelStyle: CHART_AXIS_LABEL_STYLE,
+          }),
+          // MUI x-charts v8 default yAxis.width is 45 — not driven by
+          // margin.left. Bump it explicitly so bold labels like `94.5°F`
+          // have enough room and MUI's `shortenLabels` doesn't ellipsize.
+          width: FLEET_COMPACT_LEFT_MARGIN,
           min: yMin,
           max: yMax,
           valueFormatter: value => `${value}°F`,
+          tickLabelStyle: CHART_AXIS_TICK_STYLE,
         }]}
         series={series}
         grid={{ horizontal: true, vertical: true }}

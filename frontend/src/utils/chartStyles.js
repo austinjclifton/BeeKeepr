@@ -1,69 +1,64 @@
 /**
  * Single source of truth for chart axis text styling. Chart components
  * decide data and tick positions; this file decides how the axis text
- * looks. There is no second styling path — chart components do NOT
- * pass `tickLabelStyle` / `labelStyle` props, only this sx object.
+ * looks.
  *
- * The tick label / axis label rules use `!important` for fontWeight
- * and fontFamily because MUI x-charts v8 inlines its own default
- * style (theme.typography.caption, fontWeight: 400) directly on the
- * SVG <text> element. Inline styles beat non-important CSS class
- * rules in CSS specificity, so without `!important` the tick labels
- * fall back to fontWeight: 400 on soft reload / hard refresh / prod
- * build, depending on whether MUI's internal styled-component rule
- * or the consumer's sx rule was injected first by emotion. The
- * `!important` flag makes the result deterministic regardless of
- * injection order.
+ * The values are passed to MUI x-charts via the `tickLabelStyle` and
+ * `labelStyle` axis props on every chart. MUI applies them as inline
+ * `style` on the SVG <text> element. Both this and MUI's own default
+ * caption-typography style end up inline on the same element — but MUI
+ * spreads the user-supplied prop LAST in the inline-style object (see
+ * `useAxisTicksProps.js` in @mui/x-charts v8), so our values win
+ * regardless of emotion's CSS injection order or whether the chart is
+ * lazy-loaded behind <Suspense>.
+ *
+ * `chartSx` below handles non-text visual styling only — axis line /
+ * tick stroke, grid, legend, tooltip, highlight. It deliberately does
+ * NOT touch axis text. After weeks of fighting `!important` /
+ * injection-order regressions on the dashboard refresh, prop-driven
+ * styling proved the only deterministic path.
  */
 export const CHART_AXIS_TICK_STYLE = {
-  fill: 'rgba(255,255,255,0.62)',
+  fill: 'rgba(255,255,255,0.72)',
   fontSize: 12,
   fontWeight: 800,
-  fontFamily: 'inherit',
+  // Pin the family directly rather than `inherit` — MUI x-charts
+  // internally spreads `theme.typography.caption` (fontFamily: Roboto)
+  // into the SVG <text> inline style before our `tickLabelStyle`.
+  // `inherit` worked when body font was reliably DM Sans, but it is
+  // a chain of indirection we don't actually need. Set the family
+  // explicitly so the rendered text always uses DM Sans, not whatever
+  // the SVG / theme cascade happens to resolve to at mount time.
+  fontFamily: '"DM Sans", "Segoe UI", system-ui, sans-serif',
 };
 
 export const CHART_AXIS_LABEL_STYLE = {
-  fill: 'rgba(255,255,255,0.65)',
+  fill: 'rgba(255,255,255,0.72)',
   fontSize: 13,
-  fontWeight: 700,
-  fontFamily: 'inherit',
+  fontWeight: 800,
+  fontFamily: '"DM Sans", "Segoe UI", system-ui, sans-serif',
 };
 
 /**
  * Shared MUI `sx` overrides for the analytics line charts.
  *
- * Centralizes the dark-theme axis/grid/tooltip colors so every chart
- * renders identically. Kept in `utils/` because it's pure styling data
- * with no React component logic.
+ * Non-text styling only — axis line / tick stroke, grid, legend,
+ * tooltip paper, axis highlight. Axis text styling is controlled
+ * exclusively by `CHART_AXIS_TICK_STYLE` and `CHART_AXIS_LABEL_STYLE`
+ * above (passed as MUI axis props). See the top-of-file comment.
  */
 export const chartSx = {
-  '& .MuiChartsAxis-line, & .MuiChartsAxis-tick': { stroke: 'rgba(255,255,255,0.18)' },
-  '& .MuiChartsAxis-tickLabel': {
-    ...CHART_AXIS_TICK_STYLE,
-    fontWeight: '800 !important',
-    fontFamily: 'inherit !important',
-  },
-  '& .MuiChartsAxis-label': {
-    ...CHART_AXIS_LABEL_STYLE,
-    fontWeight: '700 !important',
-    fontFamily: 'inherit !important',
-  },
-  // Pin the x and y tick label paths explicitly. Emotion's CSS
-  // injection order can otherwise let the more general
-  // `MuiChartsAxis-tickLabel` rule fall through to MUI's inline
-  // default when the chart is lazy-loaded behind <Suspense>, even
-  // with `!important` (the !important wins regardless, but this
-  // reduces the chance of specificity conflicts with other rules
-  // scoped under `& .MuiChartsAxis-directionX`).
-  '& .MuiChartsAxis-directionX .MuiChartsAxis-tickLabel': {
-    ...CHART_AXIS_TICK_STYLE,
-    fontWeight: '800 !important',
-    fontFamily: 'inherit !important',
-  },
-  '& .MuiChartsAxis-directionY .MuiChartsAxis-tickLabel': {
-    ...CHART_AXIS_TICK_STYLE,
-    fontWeight: '800 !important',
-    fontFamily: 'inherit !important',
+  // The `&&` doubles the parent class selector (specificity 0,3,0)
+  // to beat MUI's default `.MuiChartsAxis-root .MuiChartsAxis-line`
+  // rule (specificity 0,2,0) which otherwise wins by being defined
+  // later and forces `stroke-width: 1px` + `shape-rendering: crispedges`
+  // — and that 1px crispedges stroke can render as 0px or 2px
+  // depending on sub-pixel snap, which was the "goes bold sometimes"
+  // variability. We pin width, color, and shape-rendering ourselves.
+  '&& .MuiChartsAxis-line, && .MuiChartsAxis-tick': {
+    stroke: 'rgb(255,255,255)',
+    strokeWidth: 2,
+    shapeRendering: 'geometricPrecision',
   },
   '& .MuiChartsLegend-label': { fill: 'rgba(255,255,255,0.78)', fontSize: 12 },
   '& .MuiChartsLegend-mark': { rx: 2 },

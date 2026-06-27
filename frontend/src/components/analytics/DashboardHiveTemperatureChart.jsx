@@ -11,18 +11,20 @@ import {
 } from '../../utils/analyticsFormat';
 import {
   chartSx,
+  CHART_AXIS_LABEL_STYLE,
+  CHART_AXIS_TICK_STYLE,
   buildHourlyTicks,
   shouldLabelTick,
 } from '../../utils/chartStyles';
 import { nullableNumber, sortPointsByBucketAt } from '../../utils/chartSeries';
 
-// `left` was bumped from 60 to 72 so bold y-axis tick labels like
-// `96°F` never ellipsize. `bottom` reserves room for MUI's single
-// x-axis. We intentionally use MUI's real x-axis here, but we
-// control the tick positions ourselves via `tickInterval` so refresh /
-// hard-refresh / prod-build cannot change the cadence.
+// `left` bumped to 84 — gives the bold y-axis tick labels like
+// `100°F` comfortable headroom. `bottom` reserves room for MUI's
+// single x-axis. We intentionally use MUI's real x-axis here, but
+// we control the tick positions ourselves via `tickInterval` so
+// refresh / hard-refresh / prod-build cannot change the cadence.
 const CHART_MARGINS = {
-  left: 72,
+  left: 84,
   right: 24,
   top: 16,
   bottom: 36,
@@ -122,14 +124,20 @@ export default function DashboardHiveTemperatureChart({
                 ? formatChartTime(value, '1d')
                 : '';
             },
+            tickLabelStyle: CHART_AXIS_TICK_STYLE,
           },
         ]}
         yAxis={[
           {
             label: 'Temperature (°F)',
+            // MUI x-charts v8 default yAxis.width is 45 — set it
+            // explicitly so bold y-axis labels never ellipsize.
+            width: CHART_MARGINS.left,
             min: yMin,
             max: yMax,
             valueFormatter: value => `${value}°F`,
+            tickLabelStyle: CHART_AXIS_TICK_STYLE,
+            labelStyle: CHART_AXIS_LABEL_STYLE,
           },
         ]}
         series={[
